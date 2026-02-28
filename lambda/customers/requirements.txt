@@ -1,0 +1,3 @@
+# Runtime dependency — boto3 is provided by the Lambda runtime,
+# but pinned here for local testing / packaging.
+boto3>=1.34.0
