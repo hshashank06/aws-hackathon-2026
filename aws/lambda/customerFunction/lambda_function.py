@@ -47,7 +47,7 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-TABLE_NAME: str = "customers"
+TABLE_NAME: str = os.environ.get("TABLE_NAME", "Customer")
 PARTITION_KEY: str = "customerId"
 
 _dynamodb = boto3.resource("dynamodb")
@@ -265,7 +265,7 @@ def update_customer(event: dict) -> dict:
         expr_attr_values[value_key] = value
 
     update_expression = "SET " + ", ".join(set_expressions)
-    
+
     logger.info("Update expression for customer %s: %s", customer_id, update_expression)
 
     try:

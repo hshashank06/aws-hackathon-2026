@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/customers",
+  "pathParameters": null,
+  "queryStringParameters": {
+    "limit": "5"
+  },
+  "headers": {},
+  "body": null
+}

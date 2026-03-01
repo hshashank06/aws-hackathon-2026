@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/customers/customer_id_06kzw",
+  "pathParameters": {
+    "customerId": "customer_id_06kzw"
+  },
+  "queryStringParameters": null,
+  "headers": {},
+  "body": null
+}

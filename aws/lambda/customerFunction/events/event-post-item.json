@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/customers",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerName\": \"Jane Doe\", \"email\": \"jane@example.com\", \"gender\": \"Female\", \"age\": 30, \"uhid\": \"UHID-001\", \"policyId\": \"POL-123\"}"
+}
