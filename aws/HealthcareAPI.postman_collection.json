@@ -1,0 +1,858 @@
+{
+  "info": {
+    "name": "Healthcare API",
+    "description": "Full CRUD API for the Healthcare platform.\n\n**Base URL**: `https://y7wwtvf2w6.execute-api.eu-north-1.amazonaws.com`\n\n## Resources\n- Customers\n- Departments\n- Doctors\n- Hospitals\n- Insurance Companies\n- Insurance Policies\n\n## Pagination\nAll `GET /resource` list endpoints support:\n- `?limit=N` — items per page (default 20, max 100)\n- `?lastKey=<token>` — paste the `lastKey` from a previous response to get the next page\n\n## Filtering\n- `GET /departments?hospitalId=<id>` — filter departments by hospital\n- `GET /insurance-policies?companyId=<id>` — filter policies by insurance company\n\n## ID Generation (server-side)\nIDs are generated automatically on POST. You do NOT send them in the body.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://y7wwtvf2w6.execute-api.eu-north-1.amazonaws.com",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "customer_id_06kzw",
+      "type": "string"
+    },
+    {
+      "key": "departmentId",
+      "value": "department_id_1ut13",
+      "type": "string"
+    },
+    {
+      "key": "doctorId",
+      "value": "doctor_id_abc12",
+      "type": "string"
+    },
+    {
+      "key": "hospitalId",
+      "value": "hospital_apollo_hospitals_jubilee_hills_500033",
+      "type": "string"
+    },
+    {
+      "key": "insuranceCompanyId",
+      "value": "insurancecomp_4v6090wbz1",
+      "type": "string"
+    },
+    {
+      "key": "policyId",
+      "value": "insurancecomp_1sl5nrfok5_policy_wh0o47kmv3",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Customers",
+      "description": "CRUD operations for customer records.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| customerId | String | auto | PK, generated server-side |\n| customerName | String | ✅ | |\n| email | String | ✅ | |\n| gender | String | ✅ | |\n| age | Number | ✅ | |\n| uhid | String | ✅ | Unique Health ID |\n| policyId | String | ❌ | FK → InsurancePolicy |\n| visits | Array | ❌ | List of `{hospitalId, departmentId, doctorId}` |\n| createdAt | String | auto | ISO-8601 datetime |",
+      "item": [
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers"]
+            },
+            "description": "Returns a paginated list of all customers.\n\nResponse includes `lastKey` when more pages exist — pass it as `?lastKey=<value>` to fetch the next page."
+          },
+          "response": [
+            {
+              "name": "200 OK — First Page",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"customerId\": \"customer_id_06kzw\",\n      \"customerName\": \"Ravi Kumar\",\n      \"email\": \"ravi.kumar@example.com\",\n      \"gender\": \"Male\",\n      \"age\": 34,\n      \"uhid\": \"UHID1234567\",\n      \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n      \"visits\": [\n        {\n          \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n          \"departmentId\": \"department_id_1ut13\",\n          \"doctorId\": \"doctor_id_abc12\"\n        }\n      ],\n      \"createdAt\": \"2026-02-15 10:23:45\"\n    }\n  ],\n  \"count\": 1,\n  \"lastKey\": \"{\\\"customerId\\\":\\\"customer_id_06kzw\\\"}\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Customers — Paginated (page 2)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/customers?limit=5&lastKey={\"customerId\":\"customer_id_06kzw\"}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "Max items to return (default 20, max 100)"
+                },
+                {
+                  "key": "lastKey",
+                  "value": "{\"customerId\":\"customer_id_06kzw\"}",
+                  "description": "Paste the lastKey value from the previous response here to get the next page"
+                }
+              ]
+            },
+            "description": "Demonstrates cursor-based pagination.\n\n1. Call `GET /customers?limit=5` → get response with `lastKey`\n2. Call `GET /customers?limit=5&lastKey=<value from step 1>` → next page\n3. When response has no `lastKey`, you've reached the last page."
+          },
+          "response": [
+            {
+              "name": "200 OK — Last Page (no lastKey = end of results)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"customerId\": \"customer_id_99xyz\",\n      \"customerName\": \"Priya Sharma\",\n      \"email\": \"priya.sharma@example.com\",\n      \"gender\": \"Female\",\n      \"age\": 29,\n      \"uhid\": \"UHID9876543\",\n      \"policyId\": null,\n      \"visits\": [],\n      \"createdAt\": \"2026-02-20 08:11:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Arjun Mehta\",\n  \"email\": \"arjun.mehta@example.com\",\n  \"gender\": \"Male\",\n  \"age\": 42,\n  \"uhid\": \"UHID4455667\",\n  \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n  \"visits\": [\n    {\n      \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n      \"departmentId\": \"department_id_1ut13\",\n      \"doctorId\": \"doctor_id_abc12\"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers"]
+            },
+            "description": "Creates a new customer. `customerId` and `createdAt` are generated server-side.\n\n**Required**: `customerName`, `email`, `gender`, `age`, `uhid`\n**Optional**: `policyId`, `visits`"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"customerId\": \"customer_id_a3f9c\",\n  \"customerName\": \"Arjun Mehta\",\n  \"email\": \"arjun.mehta@example.com\",\n  \"gender\": \"Male\",\n  \"age\": 42,\n  \"uhid\": \"UHID4455667\",\n  \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n  \"visits\": [\n    {\n      \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n      \"departmentId\": \"department_id_1ut13\",\n      \"doctorId\": \"doctor_id_abc12\"\n    }\n  ],\n  \"createdAt\": \"2026-03-01 09:45:12\"\n}"
+            },
+            {
+              "name": "400 Bad Request — Missing required fields",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"error\": \"Missing required fields: email, uhid\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Customer by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers", "{{customerId}}"]
+            },
+            "description": "Returns a single customer by `customerId`."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"customerId\": \"customer_id_06kzw\",\n  \"customerName\": \"Ravi Kumar\",\n  \"email\": \"ravi.kumar@example.com\",\n  \"gender\": \"Male\",\n  \"age\": 34,\n  \"uhid\": \"UHID1234567\",\n  \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n  \"visits\": [],\n  \"createdAt\": \"2026-02-15 10:23:45\"\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"error\": \"Customer 'customer_id_06kzw' not found.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Customer",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Ravi Kumar Updated\",\n  \"email\": \"ravi.updated@example.com\",\n  \"age\": 35\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers", "{{customerId}}"]
+            },
+            "description": "Partially updates a customer. Only send the fields you want to change.\n\n**Updatable fields**: `customerName`, `email`, `gender`, `age`, `policyId`, `visits`, `uhid`\n\n`customerId` and `createdAt` are immutable."
+          },
+          "response": [
+            {
+              "name": "200 OK — Returns full updated record",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"customerId\": \"customer_id_06kzw\",\n  \"customerName\": \"Ravi Kumar Updated\",\n  \"email\": \"ravi.updated@example.com\",\n  \"gender\": \"Male\",\n  \"age\": 35,\n  \"uhid\": \"UHID1234567\",\n  \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n  \"visits\": [],\n  \"createdAt\": \"2026-02-15 10:23:45\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customers", "{{customerId}}"]
+            },
+            "description": "Deletes a customer by ID. Returns the deleted record."
+          },
+          "response": [
+            {
+              "name": "200 OK — Returns deleted record",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"message\": \"Customer 'customer_id_06kzw' deleted.\",\n  \"deleted\": {\n    \"customerId\": \"customer_id_06kzw\",\n    \"customerName\": \"Ravi Kumar Updated\",\n    \"email\": \"ravi.updated@example.com\",\n    \"gender\": \"Male\",\n    \"age\": 35,\n    \"uhid\": \"UHID1234567\",\n    \"policyId\": null,\n    \"visits\": [],\n    \"createdAt\": \"2026-02-15 10:23:45\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Departments",
+      "description": "CRUD operations for departments within hospitals.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| departmentId | String | auto | PK |\n| departmentName | String | ✅ | |\n| hospitalId | String | ✅ | FK → Hospital |\n| departmentDescription | String | ❌ | |\n| listOfDoctorIds | Array | ❌ | List of doctorId strings |\n| createdAt | String | auto | |\n\n**Filtering**: `GET /departments?hospitalId=<id>` filters by hospital.",
+      "item": [
+        {
+          "name": "List Departments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments"]
+            },
+            "description": "Returns all departments (paginated, default 20 per page)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"departmentId\": \"department_id_1ut13\",\n      \"departmentName\": \"Department of Gastroenterology\",\n      \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n      \"departmentDescription\": \"Specialised in digestive system disorders.\",\n      \"listOfDoctorIds\": [\"doctor_id_abc12\"],\n      \"createdAt\": \"2026-01-10 07:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Departments — Filter by Hospital",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments?hospitalId={{hospitalId}}&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments"],
+              "query": [
+                {
+                  "key": "hospitalId",
+                  "value": "{{hospitalId}}",
+                  "description": "Filter departments belonging to a specific hospital"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Filters departments by `hospitalId`. Only departments in that hospital are returned.\n\nCombine with `limit` and `lastKey` for pagination within the filtered set."
+          },
+          "response": [
+            {
+              "name": "200 OK — Filtered results",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"departmentId\": \"department_id_1ut13\",\n      \"departmentName\": \"Department of Gastroenterology\",\n      \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n      \"departmentDescription\": \"Specialised in digestive system disorders.\",\n      \"listOfDoctorIds\": [\"doctor_id_abc12\"],\n      \"createdAt\": \"2026-01-10 07:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Department",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departmentName\": \"Department of Cardiology\",\n  \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n  \"departmentDescription\": \"Advanced cardiac care and interventional procedures.\",\n  \"listOfDoctorIds\": [\"doctor_id_abc12\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/departments",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments"]
+            },
+            "description": "**Required**: `departmentName`, `hospitalId`\n**Optional**: `departmentDescription`, `listOfDoctorIds`"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"departmentId\": \"department_id_b2c4e\",\n  \"departmentName\": \"Department of Cardiology\",\n  \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n  \"departmentDescription\": \"Advanced cardiac care and interventional procedures.\",\n  \"listOfDoctorIds\": [\"doctor_id_abc12\"],\n  \"createdAt\": \"2026-03-01 11:00:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Department by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments/{{departmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments", "{{departmentId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Department",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departmentName\": \"Department of Advanced Gastroenterology\",\n  \"departmentDescription\": \"Updated description for gastroenterology.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/departments/{{departmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments", "{{departmentId}}"]
+            },
+            "description": "Partial update — only send the fields you want to change."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Department",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments/{{departmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["departments", "{{departmentId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "description": "CRUD operations for doctors.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| doctorId | String | auto | PK |\n| doctorName | String | ✅ | |\n| about | String | ❌ | Bio / description |\n| records | Array | ❌ | Medical records list |\n| createdAt | String | auto | |",
+      "item": [
+        {
+          "name": "List Doctors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/doctors",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"doctorId\": \"doctor_id_abc12\",\n      \"doctorName\": \"Dr. Arjun Mehta\",\n      \"about\": \"Senior cardiologist with 15 years of experience.\",\n      \"records\": [],\n      \"createdAt\": \"2025-12-01 06:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Doctors — With Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/doctors?limit=3",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "description": "Return only 3 doctors — useful for UI cards/grids"
+                }
+              ]
+            },
+            "description": "Returns only 3 doctors. If there are more, the response includes `lastKey` which you pass as `?lastKey=<value>` to get the next batch."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Doctor",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorName\": \"Dr. Priya Iyer\",\n  \"about\": \"Neurologist specialising in epilepsy and movement disorders with 10 years of experience at AIIMS.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/doctors",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors"]
+            },
+            "description": "**Required**: `doctorName`\n**Optional**: `about`, `records`"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"doctorId\": \"doctor_id_f4a2b\",\n  \"doctorName\": \"Dr. Priya Iyer\",\n  \"about\": \"Neurologist specialising in epilepsy and movement disorders with 10 years of experience at AIIMS.\",\n  \"records\": [],\n  \"createdAt\": \"2026-03-01 12:30:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Doctor by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/doctors/{{doctorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors", "{{doctorId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Doctor",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorName\": \"Dr. Arjun Mehta\",\n  \"about\": \"Updated: Senior cardiologist with 18 years of experience and expertise in interventional procedures.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/doctors/{{doctorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors", "{{doctorId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Doctor",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/doctors/{{doctorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["doctors", "{{doctorId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hospitals",
+      "description": "CRUD operations for hospitals.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| hospitalId | String | auto | PK |\n| hospitalName | String | ✅ | |\n| address | String | ✅ | |\n| phoneNumber | String | ✅ | |\n| location | String | ❌ | |\n| services | Array | ❌ | List of service name strings |\n| departmentIds | Array | ❌ | FK list → Department |\n| insuranceCompanyIds | Array | ❌ | FK list → InsuranceCompany |\n| createdAt | String | auto | |",
+      "item": [
+        {
+          "name": "List Hospitals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hospitals",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\",\n      \"hospitalName\": \"Apollo Hospitals, Jubilee Hills\",\n      \"address\": \"Jubilee Hills, Hyderabad - 500033\",\n      \"phoneNumber\": \"040-23607777\",\n      \"location\": \"Hyderabad, Telangana\",\n      \"services\": [\"Emergency Care\", \"Cardiology\", \"Neurology\"],\n      \"departmentIds\": [\"department_id_1ut13\"],\n      \"insuranceCompanyIds\": [\"insurancecomp_4v6090wbz1\"],\n      \"createdAt\": \"2025-11-01 00:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Hospitals — With Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hospitals?limit=2&lastKey={\"hospitalId\":\"hospital_apollo_hospitals_jubilee_hills_500033\"}",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals"],
+              "query": [
+                { "key": "limit", "value": "2" },
+                {
+                  "key": "lastKey",
+                  "value": "{\"hospitalId\":\"hospital_apollo_hospitals_jubilee_hills_500033\"}",
+                  "description": "Token from previous page's lastKey field"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Hospital",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hospitalName\": \"Yashoda Hospitals, Somajiguda\",\n  \"address\": \"Raj Bhavan Road, Somajiguda, Hyderabad - 500082\",\n  \"phoneNumber\": \"040-45678901\",\n  \"location\": \"Hyderabad, Telangana\",\n  \"services\": [\"Emergency Care\", \"Oncology\", \"Orthopaedics\", \"Paediatrics\"],\n  \"departmentIds\": [],\n  \"insuranceCompanyIds\": [\"insurancecomp_4v6090wbz1\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/hospitals",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals"]
+            },
+            "description": "**Required**: `hospitalName`, `address`, `phoneNumber`\n**Optional**: `location`, `services`, `departmentIds`, `insuranceCompanyIds`"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"hospitalId\": \"hospital_id_d3e9f\",\n  \"hospitalName\": \"Yashoda Hospitals, Somajiguda\",\n  \"address\": \"Raj Bhavan Road, Somajiguda, Hyderabad - 500082\",\n  \"phoneNumber\": \"040-45678901\",\n  \"location\": \"Hyderabad, Telangana\",\n  \"services\": [\"Emergency Care\", \"Oncology\", \"Orthopaedics\", \"Paediatrics\"],\n  \"departmentIds\": [],\n  \"insuranceCompanyIds\": [\"insurancecomp_4v6090wbz1\"],\n  \"createdAt\": \"2026-03-01 14:00:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Hospital by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hospitals/{{hospitalId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals", "{{hospitalId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Hospital",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"040-99999999\",\n  \"services\": [\"Emergency Care\", \"Cardiology\", \"Neurology\", \"Oncology\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/hospitals/{{hospitalId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals", "{{hospitalId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Hospital",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hospitals/{{hospitalId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["hospitals", "{{hospitalId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Insurance Companies",
+      "description": "CRUD operations for insurance companies.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| insuranceCompanyId | String | auto | PK |\n| insuranceCompanyName | String | ✅ | |\n| description | String | ❌ | |\n| services | String | ❌ | |\n| createdAt | String | auto | |",
+      "item": [
+        {
+          "name": "List Insurance Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-companies"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"insuranceCompanyId\": \"insurancecomp_4v6090wbz1\",\n      \"insuranceCompanyName\": \"Bajaj Allianz General Insurance\",\n      \"description\": \"Leading general insurance provider in India.\",\n      \"services\": \"Health, Motor, Travel, Home\",\n      \"createdAt\": \"2025-10-01 00:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Insurance Company",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"insuranceCompanyName\": \"Star Health and Allied Insurance\",\n  \"description\": \"India's first standalone health insurance company with 14,000+ network hospitals.\",\n  \"services\": \"Health, Personal Accident, Travel\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/insurance-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-companies"]
+            },
+            "description": "**Required**: `insuranceCompanyName`\n**Optional**: `description`, `services`"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"insuranceCompanyId\": \"insurancecomp_k8x3m2pqr1\",\n  \"insuranceCompanyName\": \"Star Health and Allied Insurance\",\n  \"description\": \"India's first standalone health insurance company with 14,000+ network hospitals.\",\n  \"services\": \"Health, Personal Accident, Travel\",\n  \"createdAt\": \"2026-03-01 15:00:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Insurance Company by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-companies/{{insuranceCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-companies", "{{insuranceCompanyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Insurance Company",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"insuranceCompanyName\": \"Bajaj Allianz General Insurance Company Ltd. (Updated)\",\n  \"description\": \"Updated description with latest offerings.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/insurance-companies/{{insuranceCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-companies", "{{insuranceCompanyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Insurance Company",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-companies/{{insuranceCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-companies", "{{insuranceCompanyId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Insurance Policies",
+      "description": "CRUD operations for insurance policies belonging to a company.\n\n**Schema**\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| policyId | String | auto | PK — format: `{companyId}_policy_{uuid}` |\n| companyId | String | ✅ | FK → InsuranceCompany |\n| about | String | ❌ | Markdown description of the plan |\n| createdAt | String | auto | |\n\n**Filtering**: `GET /insurance-policies?companyId=<id>` returns only policies for that company.",
+      "item": [
+        {
+          "name": "List Insurance Policies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies"]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"policyId\": \"insurancecomp_1sl5nrfok5_policy_wh0o47kmv3\",\n      \"companyId\": \"insurancecomp_1sl5nrfok5\",\n      \"about\": \"## Health Guardian Plus\\n\\nCashless hospitalization at 8,000+ network hospitals.\",\n      \"createdAt\": \"2025-10-15 08:00:00\"\n    }\n  ],\n  \"count\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Insurance Policies — Filter by Company",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies?companyId={{insuranceCompanyId}}&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies"],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{insuranceCompanyId}}",
+                  "description": "Filter policies belonging to this insurance company"
+                },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Returns only policies issued by the specified insurance company.\n\nUse this to show all plans available under a given company. Combine with `lastKey` for pagination.\n\n**Example flow**:\n1. User selects an insurance company from the list\n2. Call `GET /insurance-policies?companyId=<selected_id>` to show their plans"
+          },
+          "response": [
+            {
+              "name": "200 OK — Policies for one company",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"policyId\": \"insurancecomp_4v6090wbz1_policy_aa1bb2cc3d\",\n      \"companyId\": \"insurancecomp_4v6090wbz1\",\n      \"about\": \"## Bajaj Silver Health Plan\\n\\nCovers up to ₹5L per year.\",\n      \"createdAt\": \"2025-11-01 09:00:00\"\n    },\n    {\n      \"policyId\": \"insurancecomp_4v6090wbz1_policy_zz9yy8xx7w\",\n      \"companyId\": \"insurancecomp_4v6090wbz1\",\n      \"about\": \"## Bajaj Gold Health Plan\\n\\nCovers up to ₹10L per year with OPD.\",\n      \"createdAt\": \"2025-11-02 10:30:00\"\n    }\n  ],\n  \"count\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Insurance Policy",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": \"insurancecomp_4v6090wbz1\",\n  \"about\": \"## Bajaj Platinum Health Plan\\n\\nComprehensive coverage up to ₹25L per year with:\\n- Cashless hospitalisation at 10,000+ hospitals\\n- OPD cover up to ₹20,000/year\\n- Annual health check-up\\n- No room rent capping\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies"]
+            },
+            "description": "**Required**: `companyId` (must be a valid insuranceCompanyId)\n**Optional**: `about` (Markdown string describing the plan)\n\nThe `policyId` is auto-generated as `{companyId}_policy_{uuid}` which keeps it namespaced under its company."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"policyId\": \"insurancecomp_4v6090wbz1_policy_mn3op4qr5s\",\n  \"companyId\": \"insurancecomp_4v6090wbz1\",\n  \"about\": \"## Bajaj Platinum Health Plan\\n\\nComprehensive coverage up to ₹25L per year...\",\n  \"createdAt\": \"2026-03-01 16:00:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Insurance Policy by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies/{{policyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies", "{{policyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Insurance Policy",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"about\": \"## Health Guardian Plus (Revised)\\n\\nUpdated plan with cashless hospitalization at 10,000+ hospitals and enhanced wellness benefits.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies/{{policyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies", "{{policyId}}"]
+            },
+            "description": "Only `about` is updatable. `policyId`, `companyId`, and `createdAt` are immutable."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Insurance Policy",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/insurance-policies/{{policyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["insurance-policies", "{{policyId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
