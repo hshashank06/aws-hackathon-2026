@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/doctors",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"doctorName\": \"Dr. Arjun Mehta\", \"about\": \"Senior cardiologist with 15 years of experience.\", \"records\": []}"
+}

@@ -1,0 +1,10 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/departments/department_id_1ut13",
+  "pathParameters": {
+    "departmentId": "department_id_1ut13"
+  },
+  "queryStringParameters": null,
+  "headers": {},
+  "body": null
+}

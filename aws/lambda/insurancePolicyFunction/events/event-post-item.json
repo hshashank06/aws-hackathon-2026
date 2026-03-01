@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/insurance-policies",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"companyId\": \"insurancecomp_1sl5nrfok5\", \"about\": \"## Health Guardian Plus\\n\\nComprehensive individual health plan with cashless hospitalization at 8,000+ hospitals.\"}"
+}

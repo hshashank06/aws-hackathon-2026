@@ -1,0 +1,12 @@
+{
+  "httpMethod": "PUT",
+  "path": "/insurance-companies/insurancecomp_4v6090wbz1",
+  "pathParameters": {
+    "insuranceCompanyId": "insurancecomp_4v6090wbz1"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"insuranceCompanyName\": \"Bajaj Allianz General Insurance Company Ltd. (Updated)\", \"description\": \"Updated description with latest offerings.\"}"
+}

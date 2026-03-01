@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/insurance-companies",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"insuranceCompanyName\": \"Bajaj Allianz General Insurance Company Ltd.\", \"description\": \"Leading general insurance company in India.\", \"services\": \"Individual and family health insurance plans.\"}"
+}

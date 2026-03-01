@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/hospitals",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"hospitalName\": \"Apollo Hospitals, Jubilee Hills\", \"address\": \"Film Nagar, Jubilee Hills, Hyderabad, Telangana 500033, India\", \"phoneNumber\": \"040-38371254\", \"location\": \"17.4122, 78.4071\", \"services\": [\"Emergency Care\", \"Cardiology\", \"Neurology\"], \"departmentIds\": [], \"insuranceCompanyIds\": []}"
+}

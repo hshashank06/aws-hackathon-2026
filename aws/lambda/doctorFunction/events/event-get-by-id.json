@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/doctors/doctor_id_abc12",
+  "pathParameters": {
+    "doctorId": "doctor_id_abc12"
+  },
+  "queryStringParameters": null,
+  "headers": {},
+  "body": null
+}

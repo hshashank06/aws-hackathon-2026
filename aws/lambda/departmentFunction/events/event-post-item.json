@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/departments",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"departmentName\": \"Department of Cardiology\", \"hospitalId\": \"hospital_apollo_hospitals_jubilee_hills_500033\", \"departmentDescription\": \"Comprehensive cardiac care unit.\", \"listOfDoctorIds\": []}"
+}

@@ -1,0 +1,12 @@
+{
+  "httpMethod": "PUT",
+  "path": "/hospitals/hospital_apollo_hospitals_jubilee_hills_500033",
+  "pathParameters": {
+    "hospitalId": "hospital_apollo_hospitals_jubilee_hills_500033"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"phoneNumber\": \"040-99999999\", \"services\": [\"Emergency Care\", \"Cardiology\", \"Neurology\", \"Oncology\"]}"
+}

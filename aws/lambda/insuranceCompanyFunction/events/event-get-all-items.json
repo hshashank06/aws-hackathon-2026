@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/insurance-companies",
+  "pathParameters": null,
+  "queryStringParameters": {
+    "limit": "5"
+  },
+  "headers": {},
+  "body": null
+}

@@ -1,0 +1,10 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/hospitals/hospital_apollo_hospitals_jubilee_hills_500033",
+  "pathParameters": {
+    "hospitalId": "hospital_apollo_hospitals_jubilee_hills_500033"
+  },
+  "queryStringParameters": null,
+  "headers": {},
+  "body": null
+}

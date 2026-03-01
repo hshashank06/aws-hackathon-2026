@@ -1,0 +1,12 @@
+{
+  "httpMethod": "PUT",
+  "path": "/doctors/doctor_id_abc12",
+  "pathParameters": {
+    "doctorId": "doctor_id_abc12"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"doctorName\": \"Dr. Arjun Mehta\", \"about\": \"Updated: Senior cardiologist with 18 years of experience and expertise in interventional procedures.\"}"
+}

@@ -1,0 +1,12 @@
+{
+  "httpMethod": "PUT",
+  "path": "/insurance-policies/insurancecomp_1sl5nrfok5_policy_wh0o47kmv3",
+  "pathParameters": {
+    "policyId": "insurancecomp_1sl5nrfok5_policy_wh0o47kmv3"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"about\": \"## Health Guardian Plus (Revised)\\n\\nUpdated plan with cashless hospitalization at 10,000+ hospitals and enhanced wellness benefits.\"}"
+}

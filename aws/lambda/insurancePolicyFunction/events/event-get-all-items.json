@@ -1,0 +1,11 @@
+{
+  "httpMethod": "GET",
+  "path": "/insurance-policies",
+  "pathParameters": null,
+  "queryStringParameters": {
+    "limit": "5",
+    "companyId": "insurancecomp_1sl5nrfok5"
+  },
+  "headers": {},
+  "body": null
+}

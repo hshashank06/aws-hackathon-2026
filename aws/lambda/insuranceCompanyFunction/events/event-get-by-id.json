@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/insurance-companies/insurancecomp_4v6090wbz1",
+  "pathParameters": {
+    "insuranceCompanyId": "insurancecomp_4v6090wbz1"
+  },
+  "queryStringParameters": null,
+  "headers": {},
+  "body": null
+}
