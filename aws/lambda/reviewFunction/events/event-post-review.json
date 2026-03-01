@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/reviews",
+  "headers": { "Content-Type": "application/json" },
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "body": "{\"hospitalId\": \"hospital_rainbow_childrens_hospital_banjara_hills_500034\", \"doctorId\": \"department_hospital_rainbow_childrens_hospital_banjara_hills_500034_u0g2k_doctor_pgkd2t\", \"customerId\": \"customer_id_06kzw\", \"policyId\": \"insurancecomp_1sl5nrfok5_policy_g24980bprw\", \"purposeOfVisit\": \"52-year-old female presented with painless midline abdominal bulge and weakness since 2 years post-hysterectomy.\", \"doctorReview\": {\"doctorId\": \"department_hospital_rainbow_childrens_hospital_banjara_hills_500034_u0g2k_doctor_pgkd2t\", \"doctorReview\": \"Excellent care, highly recommended.\"}, \"hospitalReview\": \"Outstanding facility and prompt service. 5 stars.\", \"payment\": {\"billNo\": \"BILL-79780\", \"amountToBePayed\": \"\\u20b934956\", \"totalBillAmount\": \"\\u20b9108599\"}, \"claim\": {\"claimId\": \"CLM-528527\", \"claimAmountApproved\": \"\\u20b965583\", \"remainingAmountToBePaid\": \"\\u20b943016\"}, \"documentIds\": [\"documents/hospitalBills/customer_id_06kzw_f3a9d812c441.png\", \"documents/insuranceClaims/customer_id_06kzw_a1b2c3d4e5f6.pdf\", \"documents/medicalRecords/customer_id_06kzw_9f8e7d6c5b4a.png\"], \"extractedData\": {\"hospitalName\": \"Rainbow Childrens Hospital\", \"doctorName\": \"Dr. Naina Joshi\", \"surgeryType\": \"Laparoscopic Hernia Repair with Mesh\", \"procedureDate\": \"2025-08-18\", \"diagnosis\": \"Incisional Hernia: CT abdomen revealed midline fascial defect.\", \"medications\": [\"Amoxicillin-Clavulanate 625mg TID\", \"Ibuprofen 400mg TID\"], \"confidence\": 0.91}}"
+}

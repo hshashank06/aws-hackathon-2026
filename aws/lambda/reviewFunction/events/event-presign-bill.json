@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/reviews/presign",
+  "headers": { "Content-Type": "application/json" },
+  "body": "{\"customerId\": \"customer_id_06kzw\", \"filename\": \"hospital_bill.png\", \"documentType\": \"hospitalBill\"}",
+  "pathParameters": null,
+  "queryStringParameters": null
+}

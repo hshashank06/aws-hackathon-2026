@@ -1,0 +1,8 @@
+{
+  "httpMethod": "GET",
+  "path": "/reviews/review_373fvasqa4",
+  "headers": {},
+  "pathParameters": { "reviewId": "review_373fvasqa4" },
+  "queryStringParameters": null,
+  "body": null
+}

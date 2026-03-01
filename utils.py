@@ -13,6 +13,8 @@ Each output line follows the DynamoDB S3 import format:
   {"Item": {"attr": {"S": "val"}, ...}}
 """
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path

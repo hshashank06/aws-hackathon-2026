@@ -1,0 +1,260 @@
+{
+  "Comment": "Document processing workflow for healthcare reviews. Validates authenticity via Rekognition, extracts text via Textract, then routes to Comprehend or Comprehend Medical based on document type.",
+  "StartAt": "ValidateDocument",
+  "States": {
+    "ValidateDocument": {
+      "Type": "Task",
+      "Comment": "Call Rekognition DetectLabels + DetectText to confirm the upload is a genuine document image.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "Payload": {
+          "action": "rekognition_validate",
+          "s3Bucket.$": "$.s3Bucket",
+          "s3Key.$": "$.s3Key",
+          "documentType.$": "$.documentType"
+        }
+      },
+      "ResultPath": "$.validationResult",
+      "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "confidence.$": "$.Payload.confidence",
+        "reason.$": "$.Payload.reason"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ValidationFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "CheckDocumentValid"
+    },
+
+    "CheckDocumentValid": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.validationResult.valid",
+          "BooleanEquals": true,
+          "Next": "ExtractText"
+        }
+      ],
+      "Default": "ValidationFailed"
+    },
+
+    "ValidationFailed": {
+      "Type": "Fail",
+      "Error": "DocumentValidationFailed",
+      "Cause": "Rekognition determined the document is not authentic or legible."
+    },
+
+    "ExtractText": {
+      "Type": "Task",
+      "Comment": "Run Textract AnalyzeDocument (FORMS + TABLES) on the validated S3 object.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "Payload": {
+          "action": "textract_extract",
+          "s3Bucket.$": "$.s3Bucket",
+          "s3Key.$": "$.s3Key"
+        }
+      },
+      "ResultPath": "$.textractResult",
+      "ResultSelector": {
+        "raw_text.$": "$.Payload.raw_text",
+        "key_values.$": "$.Payload.key_values",
+        "tables.$": "$.Payload.tables"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Textract.ProvisionedThroughputExceededException"
+          ],
+          "IntervalSeconds": 3,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExtractionFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "RouteByDocumentType"
+    },
+
+    "RouteByDocumentType": {
+      "Type": "Choice",
+      "Comment": "Branch to the appropriate NLP analyser based on the document type.",
+      "Choices": [
+        {
+          "Variable": "$.documentType",
+          "StringEquals": "hospitalBill",
+          "Next": "ExtractBillData"
+        },
+        {
+          "Variable": "$.documentType",
+          "StringEquals": "insuranceClaim",
+          "Next": "ExtractClaimData"
+        },
+        {
+          "Variable": "$.documentType",
+          "StringEquals": "medicalRecord",
+          "Next": "ExtractMedicalData"
+        }
+      ],
+      "Default": "UnknownDocumentType"
+    },
+
+    "ExtractBillData": {
+      "Type": "Task",
+      "Comment": "Run Comprehend (standard NLP) on bill text, then map to payment{} fields.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "Payload": {
+          "action": "extract_bill",
+          "raw_text.$": "$.textractResult.raw_text",
+          "key_values.$": "$.textractResult.key_values",
+          "tables.$": "$.textractResult.tables",
+          "documentId.$": "$.documentId"
+        }
+      },
+      "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "confidence.$": "$.Payload.confidence",
+        "payment.$": "$.Payload.payment"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExtractionFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "End": true
+    },
+
+    "ExtractClaimData": {
+      "Type": "Task",
+      "Comment": "Run Comprehend (standard NLP) on insurance claim text, then map to claim{} fields.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "Payload": {
+          "action": "extract_claim",
+          "raw_text.$": "$.textractResult.raw_text",
+          "key_values.$": "$.textractResult.key_values",
+          "tables.$": "$.textractResult.tables",
+          "documentId.$": "$.documentId"
+        }
+      },
+      "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "confidence.$": "$.Payload.confidence",
+        "claim.$": "$.Payload.claim"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExtractionFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "End": true
+    },
+
+    "ExtractMedicalData": {
+      "Type": "Task",
+      "Comment": "Run Comprehend Medical DetectEntitiesV2 on medical record text, map to extractedData{}.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "Payload": {
+          "action": "extract_medical",
+          "raw_text.$": "$.textractResult.raw_text",
+          "key_values.$": "$.textractResult.key_values",
+          "tables.$": "$.textractResult.tables",
+          "documentId.$": "$.documentId"
+        }
+      },
+      "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "confidence.$": "$.Payload.confidence",
+        "extractedData.$": "$.Payload.extractedData"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExtractionFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "End": true
+    },
+
+    "UnknownDocumentType": {
+      "Type": "Fail",
+      "Error": "UnknownDocumentType",
+      "Cause": "documentType must be one of: hospitalBill, insuranceClaim, medicalRecord"
+    },
+
+    "ExtractionFailed": {
+      "Type": "Fail",
+      "Error": "ExtractionFailed",
+      "Cause": "Text extraction or NLP analysis step failed."
+    }
+  }
+}
