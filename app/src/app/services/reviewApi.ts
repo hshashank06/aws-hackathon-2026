@@ -83,11 +83,8 @@ async function uploadToS3(
     filename: file.name,
     documentType,
   });
-
-  // Direct browser → S3 upload (no Lambda involved)
   const uploadRes = await fetch(presign.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
 

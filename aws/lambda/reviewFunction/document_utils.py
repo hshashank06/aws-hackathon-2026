@@ -18,12 +18,14 @@ import hashlib
 import os
 import time
 from pathlib import PurePosixPath
-from typing import Optional
+
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 S3_BUCKET: str = os.environ.get("S3_BUCKET", "choco-warriors-db-synthetic-data-us")
+AWS_REGION: str = os.environ.get("AWS_REGION", "us-east-1")
 PRESIGN_EXPIRY: int = 300  # seconds (5 minutes)
 
 PREFIX_MAP: dict[str, str] = {
@@ -32,7 +34,22 @@ PREFIX_MAP: dict[str, str] = {
     "medicalRecord":  "documents/medicalRecords",
 }
 
-_s3_client = boto3.client("s3")
+# Force SigV4 + virtual-hosted style for pre-signed URL generation.
+# - signature_version="s3v4": prevents boto3 from generating legacy SigV2 URLs
+#   (AWSAccessKeyId/Signature params) which us-east-1 rejects.
+# - addressing_style="virtual": ensures the bucket is in the hostname
+#   (bucket.s3.amazonaws.com/key) so the host in the signing key matches
+#   the host in the actual HTTP request. Without this, boto3 can use the
+#   path-style global endpoint (s3.amazonaws.com/bucket/key) for signing
+#   while S3 routes via virtual-hosted, causing a host mismatch.
+_s3_client = boto3.client(
+    "s3",
+    region_name=AWS_REGION,
+    config=Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "virtual"},
+    ),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -77,22 +94,27 @@ def generate_s3_key(customer_id: str, filename: str, document_type: str) -> str:
 # Pre-signed URL
 # ---------------------------------------------------------------------------
 
-def generate_presigned_put_url(s3_key: str, content_type: Optional[str] = None) -> str:
+def generate_presigned_put_url(s3_key: str) -> str:
     """
     Generate a pre-signed PUT URL for browser-to-S3 direct upload.
 
+    ContentType is intentionally excluded from the signed parameters so that
+    the browser can PUT without needing to match a specific Content-Type header
+    value. The correct file extension is already encoded in s3_key via
+    generate_s3_key() which reads it from the original filename.
+
     Parameters
     ----------
-    s3_key       : the destination S3 object key
-    content_type : optional MIME type (e.g. "image/png")
+    s3_key : the destination S3 object key (includes correct file extension)
 
     Returns
     -------
     Pre-signed URL string (valid for PRESIGN_EXPIRY seconds)
     """
-    params: dict = {"Bucket": S3_BUCKET, "Key": s3_key}
-    if content_type:
-        params["ContentType"] = content_type
+    params: dict = {
+        "Bucket": S3_BUCKET,
+        "Key":    s3_key,
+    }
 
     url = _s3_client.generate_presigned_url(
         "put_object",

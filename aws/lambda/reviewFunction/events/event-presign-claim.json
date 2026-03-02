@@ -2,7 +2,7 @@
   "httpMethod": "POST",
   "path": "/reviews/presign",
   "headers": { "Content-Type": "application/json" },
-  "body": "{\"customerId\": \"customer_id_06kzw\", \"filename\": \"insurance_claim.pdf\", \"documentType\": \"insuranceClaim\"}",
+  "body": "{\"customerId\": \"customer_id_06kzw\", \"filename\": \"insurance_claim.jpg\", \"documentType\": \"insuranceClaim\"}",
   "pathParameters": null,
   "queryStringParameters": null
 }

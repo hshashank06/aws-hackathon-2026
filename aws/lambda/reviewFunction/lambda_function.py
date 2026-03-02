@@ -153,7 +153,7 @@ def generate_presigned_url_handler(event: dict) -> dict:
     """
     POST /reviews/presign
     Body: { customerId, filename, documentType }
-    Returns: { uploadUrl, s3Key, documentId }
+    Returns: { uploadUrl, s3Key, documentId, expiresIn }
     """
     try:
         body = _parse_body(event)
