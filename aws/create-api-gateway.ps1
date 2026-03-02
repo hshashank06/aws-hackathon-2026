@@ -17,7 +17,7 @@
     - All 6 Lambda functions already deployed
 
 .USAGE
-    .\create-api-gateway.ps1 -Region eu-north-1 -AccountId 123456789012
+    .\create-api-gateway.ps1 -Region us-east-1 -AccountId 123456789012
 #>
 
 param(

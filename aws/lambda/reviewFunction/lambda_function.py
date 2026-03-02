@@ -15,7 +15,7 @@ Environment variables (required):
   TABLE_NAME                 – DynamoDB Review table name     (default: "Review")
   DOCTOR_TABLE_NAME          – DynamoDB Doctor table name     (default: "Doctor")
   HOSPITAL_TABLE_NAME        – DynamoDB Hospital table name   (default: "Hospital")
-  S3_BUCKET                  – S3 bucket for documents        (default: "choco-warriors-db-synthetic-data")
+  S3_BUCKET                  – S3 bucket for documents        (default: "choco-warriors-db-synthetic-data-us")
   STEP_FUNCTION_ARN          – ARN of the Sync Express Workflow
   BEDROCK_MODEL_ID           – Bedrock chat model ID          (default: anthropic.claude-3-sonnet-20240229-v1:0)
   BEDROCK_EMBEDDING_MODEL_ID – Bedrock embedding model        (default: amazon.titan-embed-text-v2:0)
@@ -66,8 +66,8 @@ logger.setLevel(logging.INFO)
 TABLE_NAME:          str = os.environ.get("TABLE_NAME",          "Review")
 DOCTOR_TABLE_NAME:   str = os.environ.get("DOCTOR_TABLE_NAME",   "Doctor")
 HOSPITAL_TABLE_NAME: str = os.environ.get("HOSPITAL_TABLE_NAME", "Hospital")
-S3_BUCKET:           str = os.environ.get("S3_BUCKET",           "choco-warriors-db-synthetic-data")
-STEP_FUNCTION_ARN:   str = os.environ.get("STEP_FUNCTION_ARN",   "arn:aws:states:eu-north-1:582027981081:stateMachine:DocumentProcessingWorkflow")
+S3_BUCKET:           str = os.environ.get("S3_BUCKET",           "choco-warriors-db-synthetic-data-us")
+STEP_FUNCTION_ARN:   str = os.environ.get("STEP_FUNCTION_ARN",   "arn:aws:states:us-east-1:582027981081:stateMachine:DocumentProcessingWorkflow")
 FUNCTION_NAME:       str = os.environ.get("FUNCTION_NAME",       "reviewFunction")
 PARTITION_KEY:       str = "reviewId"
 

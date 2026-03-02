@@ -23,7 +23,7 @@ from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 
-S3_BUCKET: str = os.environ.get("S3_BUCKET", "choco-warriors-db-synthetic-data")
+S3_BUCKET: str = os.environ.get("S3_BUCKET", "choco-warriors-db-synthetic-data-us")
 PRESIGN_EXPIRY: int = 300  # seconds (5 minutes)
 
 PREFIX_MAP: dict[str, str] = {

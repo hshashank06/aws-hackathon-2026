@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "Healthcare API",
-    "description": "Full CRUD API for the Healthcare platform.\n\n**Base URL**: `https://y7wwtvf2w6.execute-api.eu-north-1.amazonaws.com`\n\n## Resources\n- Customers\n- Departments\n- Doctors\n- Hospitals\n- Insurance Companies\n- Insurance Policies\n\n## Pagination\nAll `GET /resource` list endpoints support:\n- `?limit=N` — items per page (default 20, max 100)\n- `?lastKey=<token>` — paste the `lastKey` from a previous response to get the next page\n\n## Filtering\n- `GET /departments?hospitalId=<id>` — filter departments by hospital\n- `GET /insurance-policies?companyId=<id>` — filter policies by insurance company\n\n## ID Generation (server-side)\nIDs are generated automatically on POST. You do NOT send them in the body.",
+    "description": "Full CRUD API for the Healthcare platform.\n\n**Base URL**: `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com`\n\n## Resources\n- Customers\n- Departments\n- Doctors\n- Hospitals\n- Insurance Companies\n- Insurance Policies\n\n## Pagination\nAll `GET /resource` list endpoints support:\n- `?limit=N` — items per page (default 20, max 100)\n- `?lastKey=<token>` — paste the `lastKey` from a previous response to get the next page\n\n## Filtering\n- `GET /departments?hospitalId=<id>` — filter departments by hospital\n- `GET /insurance-policies?companyId=<id>` — filter policies by insurance company\n\n## ID Generation (server-side)\nIDs are generated automatically on POST. You do NOT send them in the body.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://y7wwtvf2w6.execute-api.eu-north-1.amazonaws.com",
+      "value": "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com",
       "type": "string"
     },
     {
