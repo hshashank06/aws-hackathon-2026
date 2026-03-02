@@ -11,6 +11,11 @@ Default model: amazon.nova-lite-v1:0
   - Fast, cheap, no AWS Marketplace subscription / payment required.
   - Set env var BEDROCK_MODEL_ID to switch to any other Bedrock model.
 
+Medical extraction model: us.anthropic.claude-sonnet-4-6
+  - Claude Sonnet 4.6 via us-east-1 cross-region inference profile.
+  - Higher accuracy for structured medical record parsing.
+  - Set env var MEDICAL_MODEL_ID to override.
+
 Public API
 ----------
   generate_payment_description(payment, extracted_data, claim, raw_text)
@@ -51,6 +56,18 @@ BEDROCK_MODEL_ID: str = os.environ.get(
     "amazon.nova-lite-v1:0",
 )
 
+# Claude Sonnet 4.6 (cross-region inference profile, us-east-1) is used for
+# medical record extraction where accuracy matters more than cost.
+# Override via MEDICAL_MODEL_ID env var with any model ID or full ARN.
+# Alternatives (set as env var):
+#   anthropic.claude-3-5-haiku-20241022-v1:0          -- cheaper, faster
+#   us.anthropic.claude-3-5-sonnet-20241022-v2:0      -- Claude 3.5 Sonnet
+#   arn:aws:bedrock:us-east-1:<account>:inference-profile/us.anthropic.claude-sonnet-4-6
+MEDICAL_MODEL_ID: str = os.environ.get(
+    "MEDICAL_MODEL_ID",
+    "us.anthropic.claude-sonnet-4-6",
+)
+
 EMBEDDING_MODEL_ID: str = os.environ.get(
     "BEDROCK_EMBEDDING_MODEL_ID",
     "amazon.titan-embed-text-v2:0",
@@ -60,8 +77,8 @@ _bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 # Emitted once per cold start -- confirms module loaded and shows region/model.
 logger.info(
-    "[bedrock_utils] module loaded -- region=%s  model=%s  embedding=%s",
-    AWS_REGION, BEDROCK_MODEL_ID, EMBEDDING_MODEL_ID,
+    "[bedrock_utils] module loaded -- region=%s  model=%s  medical_model=%s  embedding=%s",
+    AWS_REGION, BEDROCK_MODEL_ID, MEDICAL_MODEL_ID, EMBEDDING_MODEL_ID,
 )
 
 
@@ -76,6 +93,7 @@ def _converse(
     max_tokens: int = 1024,
     temperature: float = 0.0,
     label: str = "converse",
+    model_id: str | None = None,
 ) -> str:
     """
     Invoke any Bedrock model via the Converse API and return the response text.
@@ -84,11 +102,13 @@ def _converse(
       messages = [{"role": "user", "content": [{"text": "..."}]}]
     This works identically for Nova, Claude, Llama, Mistral, etc.
 
+    Pass model_id to override the default BEDROCK_MODEL_ID for this call.
     Returns the response text (stripped).  Raises on failure.
     """
+    resolved_model = model_id or BEDROCK_MODEL_ID
     messages = [{"role": "user", "content": [{"text": user_text}]}]
     kwargs: dict[str, Any] = {
-        "modelId":         BEDROCK_MODEL_ID,
+        "modelId":         resolved_model,
         "messages":        messages,
         "inferenceConfig": {"maxTokens": max_tokens, "temperature": temperature},
     }
@@ -99,7 +119,7 @@ def _converse(
     logger.info(
         "[bedrock_utils][%s] INVOKING Converse API  model=%s  max_tokens=%d  "
         "temperature=%s  prompt_len=%d  preview: %.300s",
-        label, BEDROCK_MODEL_ID, max_tokens, temperature, len(user_text), preview,
+        label, resolved_model, max_tokens, temperature, len(user_text), preview,
     )
 
     response = _bedrock.converse(**kwargs)
@@ -149,40 +169,55 @@ def generate_text(prompt: str, max_tokens: int = 800, label: str = "generate_tex
 def extract_structured_fields(prompt: str) -> dict[str, Any]:
     """
     Send a structured extraction prompt to Bedrock (Converse API) and return
-    the parsed JSON dict.
+    the parsed JSON dict.  Uses the default Nova Lite model.
 
     temperature=0 for deterministic, schema-constrained output.
     Never raises -- returns {} on any failure.
     """
-    logger.info("[bedrock_utils][extract_fields] START  prompt_len=%d", len(prompt))
+    return _extract_fields_with_model(prompt, model_id=None, label="extract_fields")
+
+
+def extract_structured_fields_medical(prompt: str) -> dict[str, Any]:
+    """
+    Same as extract_structured_fields but uses MEDICAL_MODEL_ID (Claude 3.5 Haiku
+    by default) for higher accuracy on medical record parsing.
+
+    Never raises -- returns {} on any failure.
+    """
+    return _extract_fields_with_model(prompt, model_id=MEDICAL_MODEL_ID, label="extract_fields_medical")
+
+
+def _extract_fields_with_model(prompt: str, *, model_id: str | None, label: str) -> dict[str, Any]:
+    """Internal shared implementation for structured JSON extraction."""
+    logger.info("[bedrock_utils][%s] START  model=%s  prompt_len=%d", label, model_id or BEDROCK_MODEL_ID, len(prompt))
     raw_text = "(no response yet)"
     try:
-        raw_text = _converse(prompt, max_tokens=1024, temperature=0, label="extract_fields")
+        raw_text = _converse(prompt, max_tokens=1024, temperature=0, label=label, model_id=model_id)
 
         # Strip markdown code fences that Nova/Claude may wrap around JSON
         clean = re.sub(r"^```(?:json)?\n?", "", raw_text)
         clean = re.sub(r"\n?```$",          "", clean).strip()
 
         logger.info(
-            "[bedrock_utils][extract_fields] Parsing JSON  clean_len=%d  preview: %.300s",
-            len(clean), clean,
+            "[bedrock_utils][%s] Parsing JSON  clean_len=%d  preview: %.300s",
+            label, len(clean), clean,
         )
         result = json.loads(clean)
         logger.info(
-            "[bedrock_utils][extract_fields] SUCCESS  field_count=%d  fields=%s",
-            len(result), list(result.keys()),
+            "[bedrock_utils][%s] SUCCESS  field_count=%d  fields=%s",
+            label, len(result), list(result.keys()),
         )
         return result
     except json.JSONDecodeError as exc:
         logger.warning(
-            "[bedrock_utils][extract_fields] JSON PARSE FAILED -- %s  raw: %.500s",
-            exc, raw_text,
+            "[bedrock_utils][%s] JSON PARSE FAILED -- %s  raw: %.500s",
+            label, exc, raw_text,
         )
         return {}
     except Exception as exc:
         logger.error(
-            "[bedrock_utils][extract_fields] INVOCATION FAILED -- %s: %s",
-            type(exc).__name__, exc,
+            "[bedrock_utils][%s] INVOCATION FAILED -- %s: %s",
+            label, type(exc).__name__, exc,
         )
         return {}
 

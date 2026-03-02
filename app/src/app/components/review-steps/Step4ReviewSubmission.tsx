@@ -135,15 +135,33 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
       followUpRating,
     };
 
-    try {
-      const result = await submitReview(completeReviewData);
-      setReviewId(result.reviewId);
-      setSubmitted(true);
-    } catch (error) {
-      console.error("Submission failed:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // -----------------------------------------------------------------------
+    // DEBUG: log the raw formData shape so we can see exactly what fields are
+    // present and what needs to be mapped to the POST /reviews schema.
+    // POST /reviews and OpenSearch indexing are commented out until the
+    // mapping layer is confirmed correct.
+    // -----------------------------------------------------------------------
+    console.log(
+      "[DEBUG] Raw formData sent to handleSubmit:",
+      JSON.stringify(completeReviewData, null, 2)
+    );
+    alert(
+      "[DEBUG] Review JSON logged to console (submission disabled).\n\n" +
+      JSON.stringify(completeReviewData, null, 2).slice(0, 800) + "..."
+    );
+    setIsSubmitting(false);
+    return;
+
+    // TODO: uncomment once mapping layer is confirmed
+    // try {
+    //   const result = await submitReview(completeReviewData);
+    //   setReviewId(result.reviewId);
+    //   setSubmitted(true);
+    // } catch (error) {
+    //   console.error("Submission failed:", error);
+    // } finally {
+    //   setIsSubmitting(false);
+    // }
   };
 
   const canSubmit =

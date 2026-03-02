@@ -15,6 +15,7 @@ Environment variables (required):
   TABLE_NAME                 – DynamoDB Review table name     (default: "Review")
   DOCTOR_TABLE_NAME          – DynamoDB Doctor table name     (default: "Doctor")
   HOSPITAL_TABLE_NAME        – DynamoDB Hospital table name   (default: "Hospital")
+  DYNAMODB_REGION            – Region where DynamoDB tables live (default: "eu-north-1")
   S3_BUCKET                  – S3 bucket for documents        (default: "choco-warriors-db-synthetic-data-us")
   STEP_FUNCTION_ARN          – ARN of the Sync Express Workflow
   BEDROCK_MODEL_ID           – Bedrock chat model ID          (default: anthropic.claude-3-sonnet-20240229-v1:0)
@@ -69,14 +70,16 @@ HOSPITAL_TABLE_NAME: str = os.environ.get("HOSPITAL_TABLE_NAME", "Hospital")
 S3_BUCKET:           str = os.environ.get("S3_BUCKET",           "choco-warriors-db-synthetic-data-us")
 STEP_FUNCTION_ARN:   str = os.environ.get("STEP_FUNCTION_ARN",   "arn:aws:states:us-east-1:582027981081:stateMachine:DocumentProcessingWorkflowUS")
 FUNCTION_NAME:       str = os.environ.get("FUNCTION_NAME",       "reviewFunction")
+AWS_REGION:          str = os.environ.get("AWS_REGION",          "us-east-1")
+DYNAMODB_REGION:     str = os.environ.get("DYNAMODB_REGION",     "eu-north-1")
 PARTITION_KEY:       str = "reviewId"
 
-_dynamodb        = boto3.resource("dynamodb")
+_dynamodb        = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table            = _dynamodb.Table(TABLE_NAME)
 _doctor_table    = _dynamodb.Table(DOCTOR_TABLE_NAME)
 _hospital_table  = _dynamodb.Table(HOSPITAL_TABLE_NAME)
-_states_client   = boto3.client("stepfunctions")
-_lambda_client   = boto3.client("lambda")
+_states_client   = boto3.client("stepfunctions", region_name=AWS_REGION)
+_lambda_client   = boto3.client("lambda",        region_name=AWS_REGION)
 
 # Local imports (other files in this Lambda package)
 import document_utils
@@ -122,6 +125,23 @@ def _parse_body(event: dict) -> dict:
     if isinstance(raw, str):
         return json.loads(raw)
     return raw
+
+
+def _sanitize_for_dynamo(obj: Any) -> Any:
+    """
+    Recursively convert Python floats to Decimal so boto3's DynamoDB resource
+    can serialise the value.  DynamoDB's TypeSerializer rejects raw floats
+    (raises TypeError: "Float types are not supported. Use Decimal types instead.").
+    Also strips top-level None values from dicts since DynamoDB will reject
+    a NULL attribute write when strict mode is on.
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_dynamo(v) for k, v in obj.items() if v is not None or True}
+    if isinstance(obj, list):
+        return [_sanitize_for_dynamo(v) for v in obj]
+    return obj
 
 
 def _get_review_id(event: dict) -> str | None:
@@ -338,7 +358,7 @@ def create_review(event: dict) -> dict:
 
     try:
         table.put_item(
-            Item=item,
+            Item=_sanitize_for_dynamo(item),
             ConditionExpression="attribute_not_exists(#pk)",
             ExpressionAttributeNames={"#pk": PARTITION_KEY},
         )
@@ -351,12 +371,12 @@ def create_review(event: dict) -> dict:
 
     logger.info("Created review %s", review_id)
 
-    # Trigger background OpenSearch indexing (async, user need not wait)
-    _fire_index_review(
-        review_id   = review_id,
-        doctor_id   = body["doctorId"],
-        hospital_id = body["hospitalId"],
-    )
+    # TODO: re-enable once POST /reviews mapping layer is confirmed correct
+    # _fire_index_review(
+    #     review_id   = review_id,
+    #     doctor_id   = body["doctorId"],
+    #     hospital_id = body["hospitalId"],
+    # )
 
     return _ok(item, status_code=201)
 
@@ -609,7 +629,7 @@ def update_review(event: dict) -> dict:
         vk = f":v_{field}"
         set_expressions.append(f"{ph} = {vk}")
         expr_attr_names[ph] = field
-        expr_attr_values[vk] = value
+        expr_attr_values[vk] = _sanitize_for_dynamo(value)
 
     try:
         result = table.update_item(

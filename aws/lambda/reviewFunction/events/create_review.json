@@ -1,0 +1,58 @@
+{
+  "httpMethod": "POST",
+  "path": "/reviews",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "hospitalId": "hospital_rainbow_childrens_hospital_banjara_hills_500034",
+    "doctorId": "department_hospital_rainbow_childrens_hospital_banjara_hills_500034_u0g2k_doctor_pgkd2t",
+    "customerId": "customer_id_06kzw",
+    "policyId": "insurancecomp_1sl5nrfok5_policy_g24980bprw",
+    "purposeOfVisit": "52-year-old female presented with painless midline abdominal bulge and weakness since 2 years post-hysterectomy. Physical examination showed a 6cm defect in the linea alba with palpable fascial gap. Patient complained of discomfort during heavy lifting and exercise. Pre-operative imaging (CT abdomen) confirmed 6.5cm incisional hernia without contents. Laparoscopic TEP (totally extraperitoneal) repair performed with 15cm x 20cm polypropylene mesh. Hernia sac reduced, defect approximated, mesh fixed with tacks and sutures. Post-operative recovery excellent, discharged day 1.",
+    "doctorReview": {
+      "doctorId": "department_hospital_rainbow_childrens_hospital_banjara_hills_500034_u0g2k_doctor_pgkd2t",
+      "doctorReview": "**Dr. Naina Joshi - Pediatric Emergency** - My 2-year-old had foreign body aspiration. Dr. Naina performed bronchoscopy under pressure within 45 minutes. Her pediatric expertise and calm approach during emergency was reassuring to us. My child recovered fully without complications. Grateful for her quick intervention."
+    },
+    "hospitalReview": "# Perfect Emergency Cesarean at Fortis Raheja Hospital\n\n**5/5 Stars** - Reviewed on February 9, 2024\n\nHad emergency cesarean section on February 7th at Fortis Raheja Hospital. Dr. Gitanjali Sharma performed the life-saving surgery with incredible skill. The operation theatre had neonatal resuscitation equipment and advanced anesthesia support. Both mother and baby are healthy! Ward 7D maternity care was comprehensive. Nursing staff, led by Sister Priya, was wonderfully supportive. Cost: \u20b91,12,000. The surgical team's quick action and expertise saved us. Grateful to Fortis Raheja!",
+    "payment": {
+      "billNo": "BILL-79780",
+      "amountToBePayed": "\u20b934956",
+      "totalBillAmount": "\u20b9108599"
+    },
+    "claim": {
+      "claimId": "CLM-528527",
+      "claimAmountApproved": "\u20b965583",
+      "remainingAmountToBePaid": "\u20b943016"
+    },
+    "documentIds": [
+      "customer_id_06kzw_hospital_rainbow_childrens_hospital_banjara_hills_500034_35605.png",
+      "customer_id_06kzw_hospital_rainbow_childrens_hospital_banjara_hills_500034_83513.png",
+      "insurancecomp_1sl5nrfok5_customer_id_06kzw_33225.png"
+    ],
+    "extractedData": {
+      "hospitalName": "Rainbow Children's Hospital, Banjara Hills",
+      "doctorName": "Dr. Naina Joshi",
+      "surgeryType": "Laparoscopic Hernia Repair with Mesh",
+      "procedureDate": "2025-08-18",
+      "diagnosis": "Incisional hernia (6.5cm midline fascial defect at prior hysterectomy scar). CT abdomen confirmed no bowel contents in sac. Mild abdominal wall laxity. No obstruction or strangulation.",
+      "medications": [
+        "Amoxicillin-Clavulanate 625mg TID",
+        "Ibuprofen 400mg TID",
+        "Ranitidine 150mg BD",
+        "Acetaminophen 500mg QID PRN",
+        "Cetrimide-Chlorhexidine dressing"
+      ],
+      "confidence": 0.91
+    }
+  },
+  "isBase64Encoded": false,
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/reviews"
+    }
+  }
+}
