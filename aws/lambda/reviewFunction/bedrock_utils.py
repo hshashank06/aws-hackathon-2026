@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 import boto3
@@ -141,6 +142,48 @@ def generate_payment_description(
             f"- **Insurance Covered:** {claim_approved}\n"
             f"- **Patient Payable:** {patient_pays}\n"
         )
+
+
+# ---------------------------------------------------------------------------
+# Structured field extraction  (semantic, document-type-agnostic)
+# ---------------------------------------------------------------------------
+
+def extract_structured_fields(prompt: str) -> dict[str, Any]:
+    """
+    Send a structured extraction prompt to Claude and return the parsed JSON.
+
+    temperature=0 for deterministic, schema-constrained output.
+    Never raises — returns {} on any failure so callers can handle gracefully.
+    """
+    body_payload = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1024,
+        "temperature": 0,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    try:
+        response = _bedrock.invoke_model(
+            modelId     = BEDROCK_MODEL_ID,
+            contentType = "application/json",
+            accept      = "application/json",
+            body        = json.dumps(body_payload),
+        )
+        content = json.loads(response["body"].read())
+        text    = content["content"][0]["text"].strip()
+
+        # Strip markdown code fences that Claude sometimes adds
+        text = re.sub(r"^```(?:json)?\n?", "", text)
+        text = re.sub(r"\n?```$",          "", text)
+
+        result = json.loads(text)
+        logger.info("Structured extraction returned %d fields", len(result))
+        return result
+    except json.JSONDecodeError as exc:
+        logger.warning("Claude returned non-JSON for structured extraction: %s", exc)
+        return {}
+    except Exception as exc:
+        logger.exception("Bedrock structured extraction failed: %s", exc)
+        return {}
 
 
 # ---------------------------------------------------------------------------

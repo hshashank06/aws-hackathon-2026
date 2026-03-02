@@ -67,7 +67,7 @@ TABLE_NAME:          str = os.environ.get("TABLE_NAME",          "Review")
 DOCTOR_TABLE_NAME:   str = os.environ.get("DOCTOR_TABLE_NAME",   "Doctor")
 HOSPITAL_TABLE_NAME: str = os.environ.get("HOSPITAL_TABLE_NAME", "Hospital")
 S3_BUCKET:           str = os.environ.get("S3_BUCKET",           "choco-warriors-db-synthetic-data")
-STEP_FUNCTION_ARN:   str = os.environ.get("STEP_FUNCTION_ARN",   "")
+STEP_FUNCTION_ARN:   str = os.environ.get("STEP_FUNCTION_ARN",   "arn:aws:states:eu-north-1:582027981081:stateMachine:DocumentProcessingWorkflow")
 FUNCTION_NAME:       str = os.environ.get("FUNCTION_NAME",       "reviewFunction")
 PARTITION_KEY:       str = "reviewId"
 
@@ -82,9 +82,7 @@ _lambda_client   = boto3.client("lambda")
 import document_utils
 import bedrock_utils
 import opensearch_utils
-import rekognition_utils
 import textract_utils
-import comprehend_utils
 import comprehend_medical_utils
 from extractors import bill_extractor, claim_extractor, medical_extractor
 
@@ -434,15 +432,6 @@ def list_reviews(event: dict) -> dict:
 # (called by the document-processing state machine, not directly by API GW)
 # ---------------------------------------------------------------------------
 
-def _action_rekognition_validate(event: dict) -> dict:
-    """action: rekognition_validate — validate an S3 object as a genuine document."""
-    result = rekognition_utils.detect_document_validity(
-        s3_bucket=event["s3Bucket"],
-        s3_key=event["s3Key"],
-    )
-    return result  # { valid, confidence, reason, labels, detected_text }
-
-
 def _action_textract_extract(event: dict) -> dict:
     """action: textract_extract — extract raw text, key-values and tables."""
     result = textract_utils.extract_document(
@@ -453,34 +442,30 @@ def _action_textract_extract(event: dict) -> dict:
 
 
 def _action_extract_bill(event: dict) -> dict:
-    """action: extract_bill — Comprehend → bill payment fields."""
+    """action: extract_bill — Textract → Bedrock Claude → bill payment fields."""
     textract_result = {
         "raw_text":   event.get("raw_text", ""),
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
-    comprehend_result = comprehend_utils.analyze_text(textract_result["raw_text"])
-    payment = bill_extractor.extract_payment(textract_result, comprehend_result)
+    payment = bill_extractor.extract_payment(textract_result)
     return {
-        "valid":      True,
-        "confidence": comprehend_result.get("confidence", 0.0),
-        "payment":    payment,
+        "valid":   True,
+        "payment": payment,
     }
 
 
 def _action_extract_claim(event: dict) -> dict:
-    """action: extract_claim — Comprehend → insurance claim fields."""
+    """action: extract_claim — Textract → Bedrock Claude → insurance claim fields."""
     textract_result = {
         "raw_text":   event.get("raw_text", ""),
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
-    comprehend_result = comprehend_utils.analyze_text(textract_result["raw_text"])
-    claim = claim_extractor.extract_claim(textract_result, comprehend_result)
+    claim = claim_extractor.extract_claim(textract_result)
     return {
-        "valid":      True,
-        "confidence": comprehend_result.get("confidence", 0.0),
-        "claim":      claim,
+        "valid": True,
+        "claim": claim,
     }
 
 
@@ -564,7 +549,6 @@ def _action_index_review(event: dict) -> dict:
 
 
 _ACTION_HANDLERS = {
-    "rekognition_validate": _action_rekognition_validate,
     "textract_extract":     _action_textract_extract,
     "extract_bill":         _action_extract_bill,
     "extract_claim":        _action_extract_claim,

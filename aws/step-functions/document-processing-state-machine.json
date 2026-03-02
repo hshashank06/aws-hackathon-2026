@@ -1,72 +1,13 @@
 {
-  "Comment": "Document processing workflow for healthcare reviews. Validates authenticity via Rekognition, extracts text via Textract, then routes to Comprehend or Comprehend Medical based on document type.",
-  "StartAt": "ValidateDocument",
+  "Comment": "Document processing workflow for healthcare reviews. Extracts text via Textract then routes to Bedrock Claude (bills/claims) or Comprehend Medical (medical records) for semantic field extraction.",
+  "StartAt": "ExtractText",
   "States": {
-    "ValidateDocument": {
-      "Type": "Task",
-      "Comment": "Call Rekognition DetectLabels + DetectText to confirm the upload is a genuine document image.",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
-        "Payload": {
-          "action": "rekognition_validate",
-          "s3Bucket.$": "$.s3Bucket",
-          "s3Key.$": "$.s3Key",
-          "documentType.$": "$.documentType"
-        }
-      },
-      "ResultPath": "$.validationResult",
-      "ResultSelector": {
-        "valid.$": "$.Payload.valid",
-        "confidence.$": "$.Payload.confidence",
-        "reason.$": "$.Payload.reason"
-      },
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException"
-          ],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 3,
-          "BackoffRate": 2
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "ValidationFailed",
-          "ResultPath": "$.error"
-        }
-      ],
-      "Next": "CheckDocumentValid"
-    },
-
-    "CheckDocumentValid": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.validationResult.valid",
-          "BooleanEquals": true,
-          "Next": "ExtractText"
-        }
-      ],
-      "Default": "ValidationFailed"
-    },
-
-    "ValidationFailed": {
-      "Type": "Fail",
-      "Error": "DocumentValidationFailed",
-      "Cause": "Rekognition determined the document is not authentic or legible."
-    },
-
     "ExtractText": {
       "Type": "Task",
-      "Comment": "Run Textract AnalyzeDocument (FORMS + TABLES) on the validated S3 object.",
+      "Comment": "Run Textract AnalyzeDocument (FORMS + TABLES) on the S3 object. All states invoke the same reviewFunction Lambda, dispatched internally via the action field.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "FunctionName": "reviewFunction",
         "Payload": {
           "action": "textract_extract",
           "s3Bucket.$": "$.s3Bucket",
@@ -127,10 +68,10 @@
 
     "ExtractBillData": {
       "Type": "Task",
-      "Comment": "Run Comprehend (standard NLP) on bill text, then map to payment{} fields.",
+      "Comment": "Textract output passed to Bedrock Claude for semantic extraction of bill payment fields (billNo, totalBillAmount, amountToBePayed).",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "FunctionName": "reviewFunction",
         "Payload": {
           "action": "extract_bill",
           "raw_text.$": "$.textractResult.raw_text",
@@ -140,8 +81,6 @@
         }
       },
       "ResultSelector": {
-        "valid.$": "$.Payload.valid",
-        "confidence.$": "$.Payload.confidence",
         "payment.$": "$.Payload.payment"
       },
       "Retry": [
@@ -167,10 +106,10 @@
 
     "ExtractClaimData": {
       "Type": "Task",
-      "Comment": "Run Comprehend (standard NLP) on insurance claim text, then map to claim{} fields.",
+      "Comment": "Textract output passed to Bedrock Claude for semantic extraction of insurance claim fields (claimId, claimAmountApproved, remainingAmountToBePaid).",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "FunctionName": "reviewFunction",
         "Payload": {
           "action": "extract_claim",
           "raw_text.$": "$.textractResult.raw_text",
@@ -180,8 +119,6 @@
         }
       },
       "ResultSelector": {
-        "valid.$": "$.Payload.valid",
-        "confidence.$": "$.Payload.confidence",
         "claim.$": "$.Payload.claim"
       },
       "Retry": [
@@ -210,7 +147,7 @@
       "Comment": "Run Comprehend Medical DetectEntitiesV2 on medical record text, map to extractedData{}.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName.$": "$$.Execution.Input.processorLambdaArn",
+        "FunctionName": "reviewFunction",
         "Payload": {
           "action": "extract_medical",
           "raw_text.$": "$.textractResult.raw_text",
@@ -220,7 +157,6 @@
         }
       },
       "ResultSelector": {
-        "valid.$": "$.Payload.valid",
         "confidence.$": "$.Payload.confidence",
         "extractedData.$": "$.Payload.extractedData"
       },
