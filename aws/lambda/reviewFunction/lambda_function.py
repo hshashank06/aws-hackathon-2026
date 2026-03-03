@@ -5,6 +5,7 @@ Routes:
 
   POST   /reviews/presign           → generate_presigned_url_handler
   POST   /reviews/process-document  → process_document_handler
+  DELETE /reviews/documents         → delete_document_handler
   POST   /reviews                   → create_review
   GET    /reviews                   → list_reviews
   GET    /reviews/{reviewId}        → get_review
@@ -148,6 +149,10 @@ def _get_review_id(event: dict) -> str | None:
     return (event.get("pathParameters") or {}).get("reviewId")
 
 
+def _get_document_id(event: dict) -> str | None:
+    return (event.get("pathParameters") or {}).get("documentId")
+
+
 def _get_path(event: dict) -> str:
     """Return the request path (normalised, lower-case)."""
     # REST API
@@ -163,6 +168,39 @@ def _get_method(event: dict) -> str:
         event.get("httpMethod")
         or event.get("requestContext", {}).get("http", {}).get("method", "")
     ).upper()
+
+
+# ---------------------------------------------------------------------------
+# 0. Delete document handler  (removes a previously-uploaded S3 object)
+# ---------------------------------------------------------------------------
+
+def delete_document_handler(event: dict) -> dict:
+    """
+    DELETE /reviews/documents
+    Body: { "documentId": "<s3Key>" }
+    Permanently removes an uploaded document from S3.
+    Safe to call even if the object no longer exists.
+    """
+    try:
+        body = _parse_body(event)
+    except json.JSONDecodeError:
+        return _error(400, "Invalid JSON in request body.")
+
+    document_id = (body.get("documentId") or "").strip()
+    if not document_id:
+        return _error(400, "Missing required field: documentId")
+
+    s3_key = document_id  # documentId == s3Key by convention (see generate_presigned_url_handler)
+
+    try:
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "eu-north-1"))
+        s3_client.delete_object(Bucket=S3_BUCKET, Key=s3_key)
+        logger.info("Deleted S3 object: s3://%s/%s", S3_BUCKET, s3_key)
+    except Exception as exc:
+        logger.exception("Failed to delete S3 object '%s'", s3_key)
+        return _error(500, f"Failed to delete document: {exc}")
+
+    return _ok({"message": f"Document '{s3_key}' deleted from S3.", "documentId": document_id})
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +746,9 @@ def lambda_handler(event: dict, context: Any) -> dict:
 
     if method == "POST" and path.endswith("/reviews/process-document"):
         return process_document_handler(event)
+
+    if method == "DELETE" and path.endswith("/reviews/documents"):
+        return delete_document_handler(event)
 
     # Standard CRUD routes
     if method == "POST"   and not review_id:

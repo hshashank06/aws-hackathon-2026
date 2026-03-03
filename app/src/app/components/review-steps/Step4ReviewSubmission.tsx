@@ -1,72 +1,154 @@
-import { useState } from "react";
-import { Star, ChevronLeft, CheckCircle, DollarSign, Building2, Stethoscope } from "lucide-react";
-import { motion } from "motion/react";
-import { submitReview } from "../../services/reviewApi";
+import { useState, useEffect } from "react"
+import {
+  Star,
+  ChevronLeft,
+  CheckCircle,
+  DollarSign,
+  Building2,
+  Stethoscope,
+  User
+} from "lucide-react"
+import { motion } from "motion/react"
+import { submitReview } from "../../services/reviewApi"
+
+const API_BASE_URL: string =
+  (import.meta as any).env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""
+
+interface DoctorItem {
+  doctorId: string
+  doctorName: string
+}
 
 interface Step4Props {
   data: {
-    hospitalRating: number;
-    hospitalReview: string;
-    doctorRating: number;
-    doctorReview: string;
-    totalCost: number;
-    insuranceCovered: number;
-    doctorName: string;
-    surgeryType: string;
+    doctorId: string
+    hospitalRating: number
+    hospitalReview: string
+    doctorRating: number
+    doctorReview: string
+    totalCost: number
+    insuranceCovered: number
+    doctorName: string
+    surgeryType: string
     // Hospital ratings
-    serviceRating: number;
-    maintenanceRating: number;
-    foodRating: number;
-    cleanlinessRating: number;
-    staffRating: number;
+    serviceRating: number
+    maintenanceRating: number
+    foodRating: number
+    cleanlinessRating: number
+    staffRating: number
     // Doctor ratings
-    bedsideMannerRating: number;
-    expertiseRating: number;
-    communicationRating: number;
-    waitTimeRating: number;
-    thoroughnessRating: number;
-    followUpRating: number;
-  };
-  onUpdate: (data: any) => void;
-  onBack: () => void;
-  allData: any;
+    bedsideMannerRating: number
+    expertiseRating: number
+    communicationRating: number
+    waitTimeRating: number
+    thoroughnessRating: number
+    followUpRating: number
+  }
+  onUpdate: (data: any) => void
+  onBack: () => void
+  allData: any
 }
 
-export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4Props) {
-  const [hospitalRating, setHospitalRating] = useState(data.hospitalRating || 0);
-  const [hospitalReview, setHospitalReview] = useState(data.hospitalReview || "");
-  const [doctorRating, setDoctorRating] = useState(data.doctorRating || 0);
-  const [doctorReview, setDoctorReview] = useState(data.doctorReview || "");
-  const [totalCost, setTotalCost] = useState(data.totalCost || 0);
-  const [insuranceCovered, setInsuranceCovered] = useState(data.insuranceCovered || 0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [reviewId, setReviewId] = useState("");
+export function Step4ReviewSubmission({
+  data,
+  onUpdate,
+  onBack,
+  allData
+}: Step4Props) {
+  const [hospitalRating, setHospitalRating] = useState(data.hospitalRating || 0)
+  const [hospitalReview, setHospitalReview] = useState(
+    data.hospitalReview || ""
+  )
+  const [doctorRating, setDoctorRating] = useState(data.doctorRating || 0)
+  const [doctorReview, setDoctorReview] = useState(data.doctorReview || "")
+  const [totalCost, setTotalCost] = useState(data.totalCost || 0)
+  const [insuranceCovered, setInsuranceCovered] = useState(
+    data.insuranceCovered || 0
+  )
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [reviewId, setReviewId] = useState("")
+
+  // Doctor selection
+  const [selectedDoctorId, setSelectedDoctorId] = useState(data.doctorId || "")
+  const [doctors, setDoctors] = useState<DoctorItem[]>([])
+  const [doctorsLoading, setDoctorsLoading] = useState(false)
+
+  useEffect(() => {
+    async function fetchDoctors() {
+      setDoctorsLoading(true)
+      try {
+        const res = await fetch(`${API_BASE_URL}/doctors?limit=100`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = await res.json()
+        const items: DoctorItem[] = Array.isArray(json)
+          ? json
+          : (json.items ?? [])
+        setDoctors(items)
+        // Auto-select if name matches extracted doctor name
+        if (!selectedDoctorId && allData.doctorName) {
+          const match = items.find((d) =>
+            d.doctorName
+              .toLowerCase()
+              .includes(allData.doctorName.toLowerCase())
+          )
+          if (match) {
+            setSelectedDoctorId(match.doctorId)
+            onUpdate({ ...data, doctorId: match.doctorId })
+          }
+        }
+      } catch (err) {
+        console.error("[Doctors API]", err)
+      } finally {
+        setDoctorsLoading(false)
+      }
+    }
+    fetchDoctors()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleDoctorChange = (doctorId: string) => {
+    setSelectedDoctorId(doctorId)
+    onUpdate({ ...data, doctorId })
+  }
 
   // Hospital category ratings
-  const [serviceRating, setServiceRating] = useState(data.serviceRating || 0);
-  const [maintenanceRating, setMaintenanceRating] = useState(data.maintenanceRating || 0);
-  const [foodRating, setFoodRating] = useState(data.foodRating || 0);
-  const [cleanlinessRating, setCleanlinessRating] = useState(data.cleanlinessRating || 0);
-  const [staffRating, setStaffRating] = useState(data.staffRating || 0);
+  const [serviceRating, setServiceRating] = useState(data.serviceRating || 0)
+  const [maintenanceRating, setMaintenanceRating] = useState(
+    data.maintenanceRating || 0
+  )
+  const [foodRating, setFoodRating] = useState(data.foodRating || 0)
+  const [cleanlinessRating, setCleanlinessRating] = useState(
+    data.cleanlinessRating || 0
+  )
+  const [staffRating, setStaffRating] = useState(data.staffRating || 0)
 
   // Doctor category ratings
-  const [bedsideMannerRating, setBedsideMannerRating] = useState(data.bedsideMannerRating || 0);
-  const [expertiseRating, setExpertiseRating] = useState(data.expertiseRating || 0);
-  const [communicationRating, setCommunicationRating] = useState(data.communicationRating || 0);
-  const [waitTimeRating, setWaitTimeRating] = useState(data.waitTimeRating || 0);
-  const [thoroughnessRating, setThoroughnessRating] = useState(data.thoroughnessRating || 0);
-  const [followUpRating, setFollowUpRating] = useState(data.followUpRating || 0);
+  const [bedsideMannerRating, setBedsideMannerRating] = useState(
+    data.bedsideMannerRating || 0
+  )
+  const [expertiseRating, setExpertiseRating] = useState(
+    data.expertiseRating || 0
+  )
+  const [communicationRating, setCommunicationRating] = useState(
+    data.communicationRating || 0
+  )
+  const [waitTimeRating, setWaitTimeRating] = useState(data.waitTimeRating || 0)
+  const [thoroughnessRating, setThoroughnessRating] = useState(
+    data.thoroughnessRating || 0
+  )
+  const [followUpRating, setFollowUpRating] = useState(data.followUpRating || 0)
 
   const handleRatingClick = (type: "hospital" | "doctor", rating: number) => {
     if (type === "hospital") {
-      setHospitalRating(rating);
-      onUpdate({ ...data, hospitalRating: rating });
+      setHospitalRating(rating)
+      onUpdate({ ...data, hospitalRating: rating })
     } else {
-      setDoctorRating(rating);
-      onUpdate({ ...data, doctorRating: rating });
+      setDoctorRating(rating)
+      onUpdate({ ...data, doctorRating: rating })
     }
-  };
+  }
 
   const handleCategoryRating = (category: string, rating: number) => {
     const setters: any = {
@@ -80,36 +162,36 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
       communication: setCommunicationRating,
       waitTime: setWaitTimeRating,
       thoroughness: setThoroughnessRating,
-      followUp: setFollowUpRating,
-    };
+      followUp: setFollowUpRating
+    }
 
-    setters[category]?.(rating);
-    onUpdate({ ...data, [`${category}Rating`]: rating });
-  };
+    setters[category]?.(rating)
+    onUpdate({ ...data, [`${category}Rating`]: rating })
+  }
 
   const handleFieldUpdate = (field: string, value: any) => {
-    const updates: any = { [field]: value };
+    const updates: any = { [field]: value }
 
     switch (field) {
       case "hospitalReview":
-        setHospitalReview(value);
-        break;
+        setHospitalReview(value)
+        break
       case "doctorReview":
-        setDoctorReview(value);
-        break;
+        setDoctorReview(value)
+        break
       case "totalCost":
-        setTotalCost(Number(value));
-        break;
+        setTotalCost(Number(value))
+        break
       case "insuranceCovered":
-        setInsuranceCovered(Number(value));
-        break;
+        setInsuranceCovered(Number(value))
+        break
     }
 
-    onUpdate({ ...data, ...updates });
-  };
+    onUpdate({ ...data, ...updates })
+  }
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
+    setIsSubmitting(true)
 
     const completeReviewData = {
       ...allData,
@@ -132,39 +214,81 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
       communicationRating,
       waitTimeRating,
       thoroughnessRating,
-      followUpRating,
-    };
+      followUpRating
+    }
 
     // -----------------------------------------------------------------------
-    // DEBUG: log the raw formData shape so we can see exactly what fields are
-    // present and what needs to be mapped to the POST /reviews schema.
-    // POST /reviews and OpenSearch indexing are commented out until the
-    // mapping layer is confirmed correct.
+    // Build the POST /reviews payload and submit
     // -----------------------------------------------------------------------
-    console.log(
-      "[DEBUG] Raw formData sent to handleSubmit:",
-      JSON.stringify(completeReviewData, null, 2)
-    );
-    alert(
-      "[DEBUG] Review JSON logged to console (submission disabled).\n\n" +
-      JSON.stringify(completeReviewData, null, 2).slice(0, 800) + "..."
-    );
-    setIsSubmitting(false);
-    return;
+    setSubmitError(null)
 
-    // TODO: uncomment once mapping layer is confirmed
-    // try {
-    //   const result = await submitReview(completeReviewData);
-    //   setReviewId(result.reviewId);
-    //   setSubmitted(true);
-    // } catch (error) {
-    //   console.error("Submission failed:", error);
-    // } finally {
-    //   setIsSubmitting(false);
-    // }
-  };
+    const payload = {
+      hospitalId: allData.hospitalId,
+      doctorId: selectedDoctorId,
+      customerId: (window as any).__reviewCustomerId ?? "customer_unknown",
+      purposeOfVisit:
+        allData.surgeryType || allData.diagnosis || "Medical Visit",
+      hospitalReview,
+      doctorReview: { doctorId: selectedDoctorId, doctorReview },
+      payment: allData.payment ?? {},
+      documentIds: [
+        ...(allData.documentIds ?? []),
+        ...(allData.claimDocumentIds ?? [])
+      ],
+      claim: allData.hasInsurance ? (allData.claimData ?? null) : null,
+      policyId: null,
+      extractedData: {
+        hospitalName: allData.hospitalName,
+        doctorName: allData.doctorName,
+        surgeryType: allData.surgeryType,
+        procedureDate: allData.procedureDate,
+        diagnosis: allData.diagnosis,
+        medications: allData.medications
+          ? allData.medications
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+          : [],
+        confidence: allData.extractedData?.confidence ?? 0.9
+      },
+      ratings: {
+        hospital: {
+          overall: hospitalRating,
+          service: serviceRating,
+          maintenance: maintenanceRating,
+          food: foodRating,
+          cleanliness: cleanlinessRating,
+          staff: staffRating
+        },
+        doctor: {
+          overall: doctorRating,
+          bedsideManner: bedsideMannerRating,
+          expertise: expertiseRating,
+          communication: communicationRating,
+          waitTime: waitTimeRating,
+          thoroughness: thoroughnessRating,
+          followUp: followUpRating
+        }
+      },
+      totalCost,
+      insuranceCovered,
+      outOfPocket: totalCost - insuranceCovered
+    }
+
+    try {
+      const result = await submitReview(payload)
+      setReviewId(result.reviewId)
+      setSubmitted(true)
+    } catch (error: any) {
+      console.error("Submission failed:", error)
+      setSubmitError(error.message ?? "Submission failed. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const canSubmit =
+    selectedDoctorId.length > 0 &&
     hospitalRating > 0 &&
     hospitalReview.trim().length > 20 &&
     doctorRating > 0 &&
@@ -182,19 +306,19 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
     communicationRating > 0 &&
     waitTimeRating > 0 &&
     thoroughnessRating > 0 &&
-    followUpRating > 0;
+    followUpRating > 0
 
   // Helper component for category rating
-  const CategoryRating = ({ 
-    label, 
-    description, 
-    category, 
-    rating 
-  }: { 
-    label: string; 
-    description: string; 
-    category: string; 
-    rating: number;
+  const CategoryRating = ({
+    label,
+    description,
+    category,
+    rating
+  }: {
+    label: string
+    description: string
+    category: string
+    rating: number
   }) => (
     <div className="bg-gray-50 rounded-lg p-4">
       <div className="mb-2">
@@ -222,7 +346,7 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
         </span>
       </div>
     </div>
-  );
+  )
 
   if (submitted) {
     return (
@@ -241,10 +365,12 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
             <CheckCircle className="w-12 h-12 text-green-600" />
           </motion.div>
 
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">Review Submitted Successfully!</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">
+            Review Submitted Successfully!
+          </h2>
           <p className="text-gray-600 mb-6">
-            Thank you for sharing your experience. Your verified review will help others make
-            informed healthcare decisions.
+            Thank you for sharing your experience. Your verified review will
+            help others make informed healthcare decisions.
           </p>
 
           <div className="bg-blue-50 rounded-lg p-4 mb-6 inline-block">
@@ -268,7 +394,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-3">What happens next?</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">
+              What happens next?
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold">
@@ -284,20 +412,24 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
                   2
                 </div>
                 <p className="font-medium text-gray-900 mb-1">Verification</p>
-                <p className="text-gray-600">Documents verified and securely stored</p>
+                <p className="text-gray-600">
+                  Documents verified and securely stored
+                </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold">
                   3
                 </div>
                 <p className="font-medium text-gray-900 mb-1">Published</p>
-                <p className="text-gray-600">Review goes live within 24 hours</p>
+                <p className="text-gray-600">
+                  Review goes live within 24 hours
+                </p>
               </div>
             </div>
           </div>
         </div>
       </motion.div>
-    );
+    )
   }
 
   return (
@@ -308,11 +440,46 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
     >
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Share Your Experience</h2>
-          <p className="text-gray-600">Rate and review the hospital and doctor</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Share Your Experience
+          </h2>
+          <p className="text-gray-600">
+            Rate and review the hospital and doctor
+          </p>
         </div>
 
         <div className="space-y-8">
+          {/* Doctor Selection */}
+          <div className="pb-6 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-purple-600" />
+              Select Your Doctor *
+            </h3>
+            <select
+              value={selectedDoctorId}
+              onChange={(e) => handleDoctorChange(e.target.value)}
+              disabled={doctorsLoading}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60"
+            >
+              <option value="">
+                {doctorsLoading
+                  ? "Loading doctors…"
+                  : "Select the doctor who treated you..."}
+              </option>
+              {doctors.map((d) => (
+                <option key={d.doctorId} value={d.doctorId}>
+                  {d.doctorName}
+                </option>
+              ))}
+            </select>
+            {allData.doctorName && !selectedDoctorId && (
+              <p className="mt-1 text-xs text-gray-500">
+                AI extracted doctor name:{" "}
+                <span className="font-medium">{allData.doctorName}</span>
+              </p>
+            )}
+          </div>
+
           {/* Hospital Review */}
           <div className="pb-6 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -349,7 +516,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
 
             {/* Hospital Category Ratings */}
             <div className="mb-6">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Rate Specific Aspects *</h4>
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                Rate Specific Aspects *
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <CategoryRating
                   label="Service Quality"
@@ -391,7 +560,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
               </label>
               <textarea
                 value={hospitalReview}
-                onChange={(e) => handleFieldUpdate("hospitalReview", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("hospitalReview", e.target.value)
+                }
                 placeholder="Share your experience at the hospital... How was the care? Staff? Facilities? What should others know?"
                 rows={5}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
@@ -409,7 +580,8 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
               Doctor Review - {allData.doctorName || "Unknown Doctor"}
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              Based on extracted medical records for {allData.surgeryType || "procedure"}
+              Based on extracted medical records for{" "}
+              {allData.surgeryType || "procedure"}
             </p>
 
             {/* Doctor Rating */}
@@ -441,7 +613,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
 
             {/* Doctor Category Ratings */}
             <div className="mb-6">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Rate Specific Aspects *</h4>
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                Rate Specific Aspects *
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <CategoryRating
                   label="Bedside Manner"
@@ -489,7 +663,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
               </label>
               <textarea
                 value={doctorReview}
-                onChange={(e) => handleFieldUpdate("doctorReview", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("doctorReview", e.target.value)
+                }
                 placeholder="Share your experience with the doctor... How was their care? Communication? Expertise?"
                 rows={5}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
@@ -515,7 +691,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
                 <input
                   type="number"
                   value={totalCost || ""}
-                  onChange={(e) => handleFieldUpdate("totalCost", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldUpdate("totalCost", e.target.value)
+                  }
                   placeholder="e.g., 15000"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -528,7 +706,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
                 <input
                   type="number"
                   value={insuranceCovered || ""}
-                  onChange={(e) => handleFieldUpdate("insuranceCovered", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldUpdate("insuranceCovered", e.target.value)
+                  }
                   placeholder="e.g., 12000"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -545,7 +725,9 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-600 mb-1">Insurance Covered</p>
+                    <p className="text-xs text-gray-600 mb-1">
+                      Insurance Covered
+                    </p>
                     <p className="text-lg font-bold text-green-700">
                       ${insuranceCovered.toLocaleString()}
                     </p>
@@ -594,8 +776,13 @@ export function Step4ReviewSubmission({ data, onUpdate, onBack, allData }: Step4
               "Submit Review"
             )}
           </button>
+          {submitError && (
+            <p className="mt-3 text-sm text-red-600 text-center">
+              {submitError}
+            </p>
+          )}
         </div>
       </div>
     </motion.div>
-  );
+  )
 }

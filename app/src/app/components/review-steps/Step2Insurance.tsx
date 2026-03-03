@@ -1,65 +1,107 @@
-import { useState } from "react";
-import { Shield, AlertTriangle, ChevronLeft, FileText, Mail, Smartphone, CheckCircle2, Image } from "lucide-react";
-import { motion } from "motion/react";
-import { FileUploadWithVerification } from "../FileUploadWithVerification";
+import { useState, useEffect } from "react"
+import {
+  Shield,
+  ChevronLeft,
+  FileText,
+  Mail,
+  Smartphone,
+  CheckCircle2,
+  Image,
+  AlertTriangle
+} from "lucide-react"
+import { motion } from "motion/react"
+import { FileUploadWithVerification } from "../FileUploadWithVerification"
+import { validateInsuranceClaim } from "../../services/reviewApi"
+import type { DocumentValidationResult } from "../../services/reviewApi"
+
+const API_BASE_URL: string =
+  (import.meta as any).env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""
+
+interface InsuranceCompanyItem {
+  insuranceCompanyId: string
+  insuranceCompanyName: string
+}
 
 interface Step2Props {
   data: {
-    hasInsurance: boolean;
-    insuranceCompany: string;
-    claimFiles: File[];
-    claimVerified: boolean;
-  };
-  onUpdate: (data: any) => void;
-  onNext: () => void;
-  onBack: () => void;
+    hasInsurance: boolean
+    insuranceCompanyId: string
+    claimFiles: File[]
+    claimVerified: boolean
+  }
+  onUpdate: (data: any) => void
+  onNext: () => void
+  onBack: () => void
 }
 
-const insuranceCompanies = [
-  "Blue Cross Blue Shield",
-  "UnitedHealthcare",
-  "Aetna",
-  "Cigna",
-  "Humana",
-  "Kaiser Permanente",
-  "Anthem",
-  "Medicare",
-  "Medicaid",
-  "Other",
-];
-
 export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
-  const [hasInsurance, setHasInsurance] = useState(data.hasInsurance);
-  const [insuranceCompany, setInsuranceCompany] = useState(data.insuranceCompany);
-  const [claimVerified, setClaimVerified] = useState(data.claimVerified);
+  const [hasInsurance, setHasInsurance] = useState(data.hasInsurance)
+  const [insuranceCompanyId, setInsuranceCompanyId] = useState(
+    data.insuranceCompanyId
+  )
+  const [claimVerified, setClaimVerified] = useState(data.claimVerified)
+  const [companies, setCompanies] = useState<InsuranceCompanyItem[]>([])
+  const [companiesLoading, setCompaniesLoading] = useState(false)
+
+  useEffect(() => {
+    async function fetchCompanies() {
+      setCompaniesLoading(true)
+      try {
+        const res = await fetch(`${API_BASE_URL}/insurance-companies?limit=100`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = await res.json()
+        const items: InsuranceCompanyItem[] = Array.isArray(json)
+          ? json
+          : (json.items ?? [])
+        setCompanies(items)
+      } catch (err) {
+        console.error("[Insurance Companies API]", err)
+      } finally {
+        setCompaniesLoading(false)
+      }
+    }
+    fetchCompanies()
+  }, [])
 
   const handleInsuranceToggle = (value: boolean) => {
-    setHasInsurance(value);
+    setHasInsurance(value)
     onUpdate({
       ...data,
       hasInsurance: value,
-      insuranceCompany: value ? data.insuranceCompany : "",
+      insuranceCompanyId: value ? data.insuranceCompanyId : "",
       claimFiles: value ? data.claimFiles : [],
       claimVerified: value ? data.claimVerified : true,
-    });
-  };
+      claimData: value ? (data as any).claimData : null
+    })
+  }
 
-  const handleInsuranceCompanyChange = (company: string) => {
-    setInsuranceCompany(company);
-    onUpdate({ ...data, insuranceCompany: company });
-  };
+  const handleInsuranceCompanyChange = (id: string) => {
+    setInsuranceCompanyId(id)
+    onUpdate({ ...data, insuranceCompanyId: id })
+  }
 
-  const handleClaimVerification = (files: File[], allVerified: boolean) => {
-    setClaimVerified(allVerified);
+  const handleClaimVerification = (
+    files: File[],
+    allVerified: boolean,
+    results: DocumentValidationResult[]
+  ) => {
+    setClaimVerified(allVerified)
+    const claimData = results.find((r) => r.claimData)?.claimData ?? null
+    const claimDocumentIds = results
+      .map((r) => r.documentId)
+      .filter(Boolean) as string[]
     onUpdate({
       ...data,
       claimFiles: files,
       claimVerified: allVerified,
-    });
-  };
+      claimData,
+      claimDocumentIds
+    })
+  }
 
   const canProceed =
-    !hasInsurance || (insuranceCompany && data.claimFiles.length > 0 && claimVerified);
+    !hasInsurance ||
+    (insuranceCompanyId && data.claimFiles.length > 0 && claimVerified)
 
   return (
     <motion.div
@@ -122,14 +164,22 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                   Select Insurance Company
                 </label>
                 <select
-                  value={insuranceCompany}
+                  value={insuranceCompanyId}
                   onChange={(e) => handleInsuranceCompanyChange(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={companiesLoading}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60"
                 >
-                  <option value="">Choose your insurance provider...</option>
-                  {insuranceCompanies.map((company) => (
-                    <option key={company} value={company}>
-                      {company}
+                  <option value="">
+                    {companiesLoading
+                      ? "Loading companies…"
+                      : "Choose your insurance provider..."}
+                  </option>
+                  {companies.map((c) => (
+                    <option
+                      key={c.insuranceCompanyId}
+                      value={c.insuranceCompanyId}
+                    >
+                      {c.insuranceCompanyName}
                     </option>
                   ))}
                 </select>
@@ -141,7 +191,7 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                   <Shield className="w-5 h-5 text-purple-600" />
                   What Insurance Documents Should You Upload?
                 </h3>
-                
+
                 <div className="space-y-4">
                   {/* Claims Screenshots Section */}
                   <div className="bg-white rounded-lg p-4 border border-purple-100">
@@ -150,31 +200,51 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                         <Image className="w-4 h-4 text-blue-600" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-2">Insurance Portal Screenshots</h4>
+                        <h4 className="font-semibold text-gray-900 mb-2">
+                          Insurance Portal Screenshots
+                        </h4>
                         <ul className="text-sm text-gray-700 space-y-1">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim status page</strong> showing "Approved" or "Processed" status</span>
+                            <span>
+                              <strong>Claim status page</strong> showing
+                              "Approved" or "Processed" status
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim details screen</strong> with claim number, date filed, and amounts</span>
+                            <span>
+                              <strong>Claim details screen</strong> with claim
+                              number, date filed, and amounts
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>EOB (Explanation of Benefits)</strong> from insurer's portal or app</span>
+                            <span>
+                              <strong>EOB (Explanation of Benefits)</strong>{" "}
+                              from insurer's portal or app
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Payment breakdown</strong> showing covered vs. out-of-pocket amounts</span>
+                            <span>
+                              <strong>Payment breakdown</strong> showing covered
+                              vs. out-of-pocket amounts
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Mobile app screenshots</strong> of claim history and payment records</span>
+                            <span>
+                              <strong>Mobile app screenshots</strong> of claim
+                              history and payment records
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Pre-authorization approval</strong> screen (if surgery required prior approval)</span>
+                            <span>
+                              <strong>Pre-authorization approval</strong> screen
+                              (if surgery required prior approval)
+                            </span>
                           </li>
                         </ul>
                       </div>
@@ -188,35 +258,58 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                         <Mail className="w-4 h-4 text-green-600" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-2">Insurance Emails & Letters</h4>
+                        <h4 className="font-semibold text-gray-900 mb-2">
+                          Insurance Emails & Letters
+                        </h4>
                         <ul className="text-sm text-gray-700 space-y-1">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim approval email</strong> from your insurance company</span>
+                            <span>
+                              <strong>Claim approval email</strong> from your
+                              insurance company
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>EOB email attachment</strong> (PDF) sent by insurer after processing</span>
+                            <span>
+                              <strong>EOB email attachment</strong> (PDF) sent
+                              by insurer after processing
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Pre-authorization approval letter</strong> for scheduled procedures</span>
+                            <span>
+                              <strong>Pre-authorization approval letter</strong>{" "}
+                              for scheduled procedures
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Payment confirmation email</strong> showing reimbursement amount</span>
+                            <span>
+                              <strong>Payment confirmation email</strong>{" "}
+                              showing reimbursement amount
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim submission confirmation</strong> with reference number</span>
+                            <span>
+                              <strong>Claim submission confirmation</strong>{" "}
+                              with reference number
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Coverage verification letter</strong> from insurance provider</span>
+                            <span>
+                              <strong>Coverage verification letter</strong> from
+                              insurance provider
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Denial letter</strong> (if applicable) explaining rejected claims</span>
+                            <span>
+                              <strong>Denial letter</strong> (if applicable)
+                              explaining rejected claims
+                            </span>
                           </li>
                         </ul>
                       </div>
@@ -230,31 +323,51 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                         <Smartphone className="w-4 h-4 text-purple-600" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-2">SMS & Text Messages</h4>
+                        <h4 className="font-semibold text-gray-900 mb-2">
+                          SMS & Text Messages
+                        </h4>
                         <ul className="text-sm text-gray-700 space-y-1">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim status update texts</strong> from insurance company's SMS service</span>
+                            <span>
+                              <strong>Claim status update texts</strong> from
+                              insurance company's SMS service
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Payment processed notifications</strong> via SMS with transaction ID</span>
+                            <span>
+                              <strong>Payment processed notifications</strong>{" "}
+                              via SMS with transaction ID
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Pre-authorization approval texts</strong> with approval code</span>
+                            <span>
+                              <strong>Pre-authorization approval texts</strong>{" "}
+                              with approval code
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Claim settlement messages</strong> with payment timeline</span>
+                            <span>
+                              <strong>Claim settlement messages</strong> with
+                              payment timeline
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>WhatsApp/Telegram messages</strong> from insurance customer service</span>
+                            <span>
+                              <strong>WhatsApp/Telegram messages</strong> from
+                              insurance customer service
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Screenshots of claim tracking</strong> from insurance chatbot or support</span>
+                            <span>
+                              <strong>Screenshots of claim tracking</strong>{" "}
+                              from insurance chatbot or support
+                            </span>
                           </li>
                         </ul>
                       </div>
@@ -268,23 +381,37 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                         <FileText className="w-4 h-4 text-orange-600" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-2">Physical Insurance Documents</h4>
+                        <h4 className="font-semibold text-gray-900 mb-2">
+                          Physical Insurance Documents
+                        </h4>
                         <ul className="text-sm text-gray-700 space-y-1">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Physical EOB letter</strong> mailed by insurance company</span>
+                            <span>
+                              <strong>Physical EOB letter</strong> mailed by
+                              insurance company
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Reimbursement check</strong> or bank deposit slip from insurer</span>
+                            <span>
+                              <strong>Reimbursement check</strong> or bank
+                              deposit slip from insurer
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Insurance card copy</strong> showing active coverage (redact sensitive info)</span>
+                            <span>
+                              <strong>Insurance card copy</strong> showing
+                              active coverage (redact sensitive info)
+                            </span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span><strong>Cashless treatment approval form</strong> from TPA (Third Party Administrator)</span>
+                            <span>
+                              <strong>Cashless treatment approval form</strong>{" "}
+                              from TPA (Third Party Administrator)
+                            </span>
                           </li>
                         </ul>
                       </div>
@@ -295,7 +422,9 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                 <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-2">
                   <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-yellow-900">
-                    <strong>Pro Tip:</strong> Upload multiple document types for stronger verification. You can redact personal identifiers like policy numbers or Aadhar/SSN before uploading.
+                    <strong>Pro Tip:</strong> Upload multiple document types for
+                    stronger verification. You can redact personal identifiers
+                    like policy numbers or Aadhar/SSN before uploading.
                   </p>
                 </div>
               </div>
@@ -306,6 +435,7 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                 description="Upload screenshots, emails, SMS, or documents proving your insurance claim"
                 accept="image/*,.pdf"
                 multiple={true}
+                validateFn={validateInsuranceClaim}
                 onVerificationComplete={handleClaimVerification}
               />
 
@@ -315,10 +445,12 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                 <div className="text-sm text-yellow-900">
                   <p className="font-medium mb-1">Your Choice, Your Privacy</p>
                   <p className="text-yellow-800">
-                    Sharing insurance information is completely optional. We encrypt all documents
-                    end-to-end and only use them to verify your review. Personal identifiers are
-                    redacted before any data is displayed publicly. You can help others make
-                    informed decisions about insurance coverage without compromising your privacy.
+                    Sharing insurance information is completely optional. We
+                    encrypt all documents end-to-end and only use them to verify
+                    your review. Personal identifiers are redacted before any
+                    data is displayed publicly. You can help others make
+                    informed decisions about insurance coverage without
+                    compromising your privacy.
                   </p>
                 </div>
               </div>
@@ -331,9 +463,10 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                 <div className="text-sm text-purple-900">
                   <p className="font-medium mb-1">AI Tampering Detection</p>
                   <p className="text-purple-800">
-                    Our AI analyzes claim documents for authenticity, checking metadata, image
-                    manipulation, and consistency with known insurance formats. This protects the
-                    integrity of our platform.
+                    Our AI analyzes claim documents for authenticity, checking
+                    metadata, image manipulation, and consistency with known
+                    insurance formats. This protects the integrity of our
+                    platform.
                   </p>
                 </div>
               </div>
@@ -364,5 +497,5 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
         </div>
       </div>
     </motion.div>
-  );
+  )
 }

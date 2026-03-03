@@ -183,7 +183,7 @@ New-Route "PUT"    "/insurance-policies/{policyId}"    $intInsurancePolicy
 New-Route "DELETE" "/insurance-policies/{policyId}"    $intInsurancePolicy
 
 # --- Reviews ---
-New-Route "POST"   "/reviews/presign-upload"           $intReview
+New-Route "POST"   "/reviews/presign"           $intReview
 New-Route "POST"   "/reviews/process-document"         $intReview
 New-Route "POST"   "/reviews"                          $intReview
 New-Route "GET"    "/reviews"                          $intReview
@@ -251,7 +251,7 @@ Write-Host "   GET  $ApiEndpoint/doctors"
 Write-Host "   GET  $ApiEndpoint/hospitals"
 Write-Host "   GET  $ApiEndpoint/insurance-companies"
 Write-Host "   GET  $ApiEndpoint/insurance-policies"
-Write-Host "   POST $ApiEndpoint/reviews/presign-upload"
+Write-Host "   POST $ApiEndpoint/reviews/presign"
 Write-Host "   POST $ApiEndpoint/reviews/process-document"
 Write-Host "   GET  $ApiEndpoint/reviews"
 Write-Host "   GET  $ApiEndpoint/reviews/{reviewId}"

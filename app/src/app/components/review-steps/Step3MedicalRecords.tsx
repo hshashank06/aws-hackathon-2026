@@ -1,58 +1,78 @@
-import { useState } from "react";
-import { FileText, ChevronLeft, Loader, Sparkles } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { extractMedicalData, ExtractedMedicalData } from "../../services/reviewApi";
+import { useState } from "react"
+import { FileText, ChevronLeft, Loader, Sparkles, X } from "lucide-react"
+import { motion, AnimatePresence } from "motion/react"
+import {
+  extractMedicalData,
+  ExtractedMedicalData
+} from "../../services/reviewApi"
 
 interface Step3Props {
   data: {
-    medicalRecordFiles: File[];
-    extractedData: ExtractedMedicalData | null;
-    surgeryType: string;
-    hospitalName: string;
-    doctorName: string;
-    diagnosis: string;
-    medications: string;
-    procedureDate: string;
-  };
-  onUpdate: (data: any) => void;
-  onNext: () => void;
-  onBack: () => void;
+    medicalRecordFiles: File[]
+    extractedData: ExtractedMedicalData | null
+    surgeryType: string
+    hospitalName: string
+    doctorName: string
+    diagnosis: string
+    medications: string
+    procedureDate: string
+  }
+  onUpdate: (data: any) => void
+  onNext: () => void
+  onBack: () => void
 }
 
-export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Props) {
-  const [files, setFiles] = useState<File[]>(data.medicalRecordFiles);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [extractedData, setExtractedData] = useState<ExtractedMedicalData | null>(
-    data.extractedData
-  );
+export function Step3MedicalRecords({
+  data,
+  onUpdate,
+  onNext,
+  onBack
+}: Step3Props) {
+  const [files, setFiles] = useState<File[]>(data.medicalRecordFiles)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractedData, setExtractedData] =
+    useState<ExtractedMedicalData | null>(data.extractedData)
 
   // Form fields
-  const [surgeryType, setSurgeryType] = useState(data.surgeryType);
-  const [hospitalName, setHospitalName] = useState(data.hospitalName);
-  const [doctorName, setDoctorName] = useState(data.doctorName);
-  const [diagnosis, setDiagnosis] = useState(data.diagnosis);
-  const [medications, setMedications] = useState(data.medications);
-  const [procedureDate, setProcedureDate] = useState(data.procedureDate);
+  const [surgeryType, setSurgeryType] = useState(data.surgeryType)
+  const [hospitalName, setHospitalName] = useState(data.hospitalName)
+  const [doctorName, setDoctorName] = useState(data.doctorName)
+  const [diagnosis, setDiagnosis] = useState(data.diagnosis)
+  const [medications, setMedications] = useState(data.medications)
+  const [procedureDate, setProcedureDate] = useState(data.procedureDate)
+
+  const removeFile = (index: number) => {
+    const updated = files.filter((_, i) => i !== index)
+    setFiles(updated)
+    if (updated.length === 0) {
+      setExtractedData(null)
+    }
+    onUpdate({
+      ...data,
+      medicalRecordFiles: updated,
+      extractedData: updated.length === 0 ? null : data.extractedData
+    })
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
+    if (!e.target.files || e.target.files.length === 0) return
 
-    const uploadedFiles = Array.from(e.target.files);
-    setFiles(uploadedFiles);
-    setIsExtracting(true);
+    const uploadedFiles = Array.from(e.target.files)
+    setFiles(uploadedFiles)
+    setIsExtracting(true)
 
     try {
       // Call AI extraction API
-      const extracted = await extractMedicalData(uploadedFiles);
-      setExtractedData(extracted);
+      const extracted = await extractMedicalData(uploadedFiles)
+      setExtractedData(extracted)
 
       // Auto-fill form fields
-      setSurgeryType(extracted.surgeryType);
-      setHospitalName(extracted.hospitalName);
-      setDoctorName(extracted.doctorName);
-      setDiagnosis(extracted.diagnosis);
-      setMedications(extracted.medications.join(", "));
-      setProcedureDate(extracted.procedureDate);
+      setSurgeryType(extracted.surgeryType)
+      setHospitalName(extracted.hospitalName)
+      setDoctorName(extracted.doctorName)
+      setDiagnosis(extracted.diagnosis)
+      setMedications(extracted.medications.join(", "))
+      setProcedureDate(extracted.procedureDate)
 
       onUpdate({
         medicalRecordFiles: uploadedFiles,
@@ -62,47 +82,48 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
         doctorName: extracted.doctorName,
         diagnosis: extracted.diagnosis,
         medications: extracted.medications.join(", "),
-        procedureDate: extracted.procedureDate,
-      });
+        procedureDate: extracted.procedureDate
+      })
     } catch (error) {
-      console.error("Extraction failed:", error);
+      console.error("Extraction failed:", error)
     } finally {
-      setIsExtracting(false);
+      setIsExtracting(false)
     }
-  };
+  }
 
   const handleFieldUpdate = (field: string, value: string) => {
-    const updates: any = { [field]: value };
+    const updates: any = { [field]: value }
 
     switch (field) {
       case "surgeryType":
-        setSurgeryType(value);
-        break;
+        setSurgeryType(value)
+        break
       case "hospitalName":
-        setHospitalName(value);
-        break;
+        setHospitalName(value)
+        break
       case "doctorName":
-        setDoctorName(value);
-        break;
+        setDoctorName(value)
+        break
       case "diagnosis":
-        setDiagnosis(value);
-        break;
+        setDiagnosis(value)
+        break
       case "medications":
-        setMedications(value);
-        break;
+        setMedications(value)
+        break
       case "procedureDate":
-        setProcedureDate(value);
-        break;
+        setProcedureDate(value)
+        break
     }
 
     onUpdate({
       ...data,
-      ...updates,
-    });
-  };
+      ...updates
+    })
+  }
 
-  const canProceed =
-    files.length > 0 && surgeryType && hospitalName && doctorName && diagnosis && procedureDate;
+  // surgeryType and procedureDate are optional — not every visit involves surgery
+  // or has a clearly stated date in the document.
+  const canProceed = files.length > 0 && hospitalName && doctorName && diagnosis
 
   return (
     <motion.div
@@ -112,7 +133,9 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
     >
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Medical Records & Details</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Medical Records & Details
+          </h2>
           <p className="text-gray-600">
             Upload medical records for AI extraction or fill in details manually
           </p>
@@ -152,9 +175,19 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
                     key={index}
                     className="flex items-center gap-2 text-sm text-gray-700 bg-blue-50 p-2 rounded"
                   >
-                    <FileText className="w-4 h-4 text-blue-600" />
-                    <span className="flex-1">{file.name}</span>
-                    <span className="text-gray-500">{(file.size / 1024).toFixed(1)} KB</span>
+                    <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <span className="flex-1 truncate">{file.name}</span>
+                    <span className="text-gray-500 flex-shrink-0">
+                      {(file.size / 1024).toFixed(1)} KB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -173,14 +206,21 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
                 <div className="flex items-center gap-3">
                   <motion.div
                     animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "linear"
+                    }}
                   >
                     <Loader className="w-6 h-6 text-blue-600" />
                   </motion.div>
                   <div>
-                    <p className="font-medium text-gray-900">AI Extraction in Progress...</p>
+                    <p className="font-medium text-gray-900">
+                      AI Extraction in Progress...
+                    </p>
                     <p className="text-sm text-gray-600">
-                      Analyzing documents with AWS Textract and Comprehend Medical
+                      Analyzing documents with AWS Textract and Comprehend
+                      Medical
                     </p>
                   </div>
                 </div>
@@ -204,8 +244,8 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
                       AI Extraction Completed Successfully!
                     </p>
                     <p className="text-sm text-green-800">
-                      Confidence: {(extractedData.confidence * 100).toFixed(0)}% - Review and edit
-                      the extracted information below
+                      Confidence: {(extractedData.confidence * 100).toFixed(0)}%
+                      - Review and edit the extracted information below
                     </p>
                   </div>
                 </div>
@@ -222,7 +262,9 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
               <input
                 type="text"
                 value={surgeryType}
-                onChange={(e) => handleFieldUpdate("surgeryType", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("surgeryType", e.target.value)
+                }
                 placeholder="e.g., Cardiac Bypass Surgery"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -235,7 +277,9 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
               <input
                 type="date"
                 value={procedureDate}
-                onChange={(e) => handleFieldUpdate("procedureDate", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("procedureDate", e.target.value)
+                }
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -247,7 +291,9 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
               <input
                 type="text"
                 value={hospitalName}
-                onChange={(e) => handleFieldUpdate("hospitalName", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("hospitalName", e.target.value)
+                }
                 placeholder="e.g., City General Hospital"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -260,14 +306,18 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
               <input
                 type="text"
                 value={doctorName}
-                onChange={(e) => handleFieldUpdate("doctorName", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("doctorName", e.target.value)
+                }
                 placeholder="e.g., Dr. Sarah Johnson"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-900 mb-2">Diagnosis *</label>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Diagnosis *
+              </label>
               <input
                 type="text"
                 value={diagnosis}
@@ -284,7 +334,9 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
               <input
                 type="text"
                 value={medications}
-                onChange={(e) => handleFieldUpdate("medications", e.target.value)}
+                onChange={(e) =>
+                  handleFieldUpdate("medications", e.target.value)
+                }
                 placeholder="e.g., Aspirin, Metoprolol, Atorvastatin"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -315,5 +367,5 @@ export function Step3MedicalRecords({ data, onUpdate, onNext, onBack }: Step3Pro
         </div>
       </div>
     </motion.div>
-  );
+  )
 }

@@ -1,15 +1,25 @@
-import { User, Mail, Phone, MapPin, CreditCard, Shield, Save } from "lucide-react";
-import { motion } from "motion/react";
-import { useState } from "react";
+import {
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  CreditCard,
+  Shield,
+  Save
+} from "lucide-react"
+import { motion } from "motion/react"
+import { useState } from "react"
+import { useAuth } from "../contexts/AuthContext"
 
 export function MyDetails() {
-  const [saved, setSaved] = useState(false);
+  const { user } = useAuth()
+  const [saved, setSaved] = useState(false)
 
   const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
+    e.preventDefault()
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
+  }
 
   return (
     <div className="min-h-full bg-gray-50 py-8">
@@ -57,7 +67,7 @@ export function MyDetails() {
                 </label>
                 <input
                   type="text"
-                  defaultValue="John"
+                  defaultValue={user?.givenName ?? ""}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none"
                 />
               </div>
@@ -67,7 +77,7 @@ export function MyDetails() {
                 </label>
                 <input
                   type="text"
-                  defaultValue="Doe"
+                  defaultValue={user?.familyName ?? ""}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none"
                 />
               </div>
@@ -80,7 +90,7 @@ export function MyDetails() {
               </label>
               <input
                 type="email"
-                defaultValue="john.doe@example.com"
+                defaultValue={user?.email ?? ""}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none"
               />
             </div>
@@ -92,7 +102,7 @@ export function MyDetails() {
               </label>
               <input
                 type="tel"
-                defaultValue="+1 (555) 123-4567"
+                defaultValue={user?.phoneNumber ?? ""}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none"
               />
             </div>
@@ -104,7 +114,7 @@ export function MyDetails() {
               </label>
               <textarea
                 rows={3}
-                defaultValue="123 Main Street, Apartment 4B&#10;Metro City, ST 12345"
+                defaultValue={user?.address ?? ""}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none resize-none"
               />
             </div>
@@ -164,9 +174,10 @@ export function MyDetails() {
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-900">
-                <strong>Privacy Note:</strong> Your insurance information is encrypted and only
-                used to help match you with hospitals that accept your coverage. We never share
-                this data with third parties.
+                <strong>Privacy Note:</strong> Your insurance information is
+                encrypted and only used to help match you with hospitals that
+                accept your coverage. We never share this data with third
+                parties.
               </p>
             </div>
           </motion.div>
@@ -225,5 +236,5 @@ export function MyDetails() {
         </form>
       </div>
     </div>
-  );
+  )
 }

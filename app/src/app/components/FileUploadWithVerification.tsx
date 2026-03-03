@@ -1,21 +1,32 @@
-import { useState, useEffect } from "react";
-import { Upload, CheckCircle, XCircle, Loader, FileText } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { validateDocument } from "../services/reviewApi";
+import { useState, useEffect } from "react"
+import { Upload, CheckCircle, XCircle, Loader, FileText } from "lucide-react"
+import { motion, AnimatePresence } from "motion/react"
+import {
+  validateDocument,
+  deleteDocument,
+  DocumentValidationResult
+} from "../services/reviewApi"
 
 interface FileUploadProps {
-  label: string;
-  description?: string;
-  accept?: string;
-  multiple?: boolean;
-  onVerificationComplete: (files: File[], allVerified: boolean) => void;
+  label: string
+  description?: string
+  accept?: string
+  multiple?: boolean
+  /** Override the validation function (e.g. validateInsuranceClaim). Defaults to validateDocument (hospitalBill). */
+  validateFn?: (file: File) => Promise<DocumentValidationResult>
+  onVerificationComplete: (
+    files: File[],
+    allVerified: boolean,
+    results: DocumentValidationResult[]
+  ) => void
 }
 
 interface FileStatus {
-  file: File;
-  status: "pending" | "validating" | "verified" | "failed";
-  message?: string;
-  confidence?: number;
+  file: File
+  status: "pending" | "validating" | "verified" | "failed"
+  message?: string
+  confidence?: number
+  result?: DocumentValidationResult
 }
 
 export function FileUploadWithVerification({
@@ -23,82 +34,94 @@ export function FileUploadWithVerification({
   description,
   accept = "image/*,.pdf",
   multiple = true,
-  onVerificationComplete,
+  validateFn = validateDocument,
+  onVerificationComplete
 }: FileUploadProps) {
-  const [files, setFiles] = useState<FileStatus[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  const [files, setFiles] = useState<FileStatus[]>([])
+  const [isDragging, setIsDragging] = useState(false)
 
   // Use effect to notify parent when files change
   useEffect(() => {
     if (files.length > 0) {
-      const allFiles = files.map((f) => f.file);
-      const allVerified = files.every((f) => f.status === "verified");
-      onVerificationComplete(allFiles, allVerified);
+      const allFiles = files.map((f) => f.file)
+      const allVerified = files.every((f) => f.status === "verified")
+      const results = files
+        .map((f) => f.result)
+        .filter(Boolean) as DocumentValidationResult[]
+      onVerificationComplete(allFiles, allVerified, results)
     } else {
-      onVerificationComplete([], false);
+      onVerificationComplete([], false, [])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files]);
+  }, [files])
 
   const handleFiles = async (fileList: FileList) => {
     const newFiles: FileStatus[] = Array.from(fileList).map((file) => ({
       file,
-      status: "pending" as const,
-    }));
+      status: "pending" as const
+    }))
 
-    setFiles((prev) => [...prev, ...newFiles]);
+    setFiles((prev) => [...prev, ...newFiles])
 
     // Validate each file
     for (let i = 0; i < newFiles.length; i++) {
-      const fileStatus = newFiles[i];
-      const index = files.length + i;
+      const fileStatus = newFiles[i]
+      const index = files.length + i
 
       // Update status to validating
       setFiles((prev) => {
-        const updated = [...prev];
-        updated[index] = { ...updated[index], status: "validating" };
-        return updated;
-      });
+        const updated = [...prev]
+        updated[index] = { ...updated[index], status: "validating" }
+        return updated
+      })
 
       // Call validation API
-      const result = await validateDocument(fileStatus.file);
+      const result = await validateFn(fileStatus.file)
 
       // Update status with result
       setFiles((prev) => {
-        const updated = [...prev];
+        const updated = [...prev]
         updated[index] = {
           ...updated[index],
           status: result.verified ? "verified" : "failed",
           message: result.message,
           confidence: result.confidence,
-        };
-        return updated;
-      });
+          result
+        }
+        return updated
+      })
     }
-  };
+  }
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
+    e.preventDefault()
+    setIsDragging(false)
     if (e.dataTransfer.files) {
-      handleFiles(e.dataTransfer.files);
+      handleFiles(e.dataTransfer.files)
     }
-  };
+  }
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      handleFiles(e.target.files);
+      handleFiles(e.target.files)
     }
-  };
+  }
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
+    const fileStatus = files[index]
+    // If the file was already uploaded to S3, delete it there too
+    if (fileStatus?.result?.documentId) {
+      deleteDocument(fileStatus.result.documentId)
+    }
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
 
   return (
     <div className="space-y-3">
       <label className="block font-medium text-gray-900">{label}</label>
-      {description && <p className="text-sm text-gray-600 -mt-2">{description}</p>}
+      {description && (
+        <p className="text-sm text-gray-600 -mt-2">{description}</p>
+      )}
 
       {/* Upload Area */}
       <div
@@ -108,8 +131,8 @@ export function FileUploadWithVerification({
             : "border-gray-300 hover:border-gray-400 bg-gray-50"
         }`}
         onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
+          e.preventDefault()
+          setIsDragging(true)
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
@@ -150,8 +173,8 @@ export function FileUploadWithVerification({
                   fileStatus.status === "verified"
                     ? "bg-green-50 border-green-200"
                     : fileStatus.status === "failed"
-                    ? "bg-red-50 border-red-200"
-                    : "bg-white border-gray-200"
+                      ? "bg-red-50 border-red-200"
+                      : "bg-white border-gray-200"
                 }`}
               >
                 <FileText className="w-5 h-5 text-gray-600 flex-shrink-0" />
@@ -165,13 +188,16 @@ export function FileUploadWithVerification({
                   {fileStatus.message && (
                     <p
                       className={`text-xs mt-1 ${
-                        fileStatus.status === "verified" ? "text-green-700" : "text-red-700"
+                        fileStatus.status === "verified"
+                          ? "text-green-700"
+                          : "text-red-700"
                       }`}
                     >
                       {fileStatus.message}
                       {fileStatus.confidence && (
                         <span className="ml-1">
-                          (Confidence: {(fileStatus.confidence * 100).toFixed(0)}%)
+                          (Confidence:{" "}
+                          {(fileStatus.confidence * 100).toFixed(0)}%)
                         </span>
                       )}
                     </p>
@@ -183,7 +209,11 @@ export function FileUploadWithVerification({
                   {fileStatus.status === "validating" && (
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear"
+                      }}
                     >
                       <Loader className="w-5 h-5 text-blue-600" />
                     </motion.div>
@@ -221,5 +251,5 @@ export function FileUploadWithVerification({
         )}
       </AnimatePresence>
     </div>
-  );
+  )
 }

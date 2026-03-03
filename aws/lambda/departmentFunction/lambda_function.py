@@ -1,17 +1,17 @@
-"""
-AWS Lambda – Department CRUD
+﻿"""
+AWS Lambda â€“ Department CRUD
 =============================
 Handles the following API Gateway (HTTP API or REST API) proxy events:
 
-  POST   /departments                   → create_department
-  GET    /departments                   → list_departments  (optional ?limit=N&lastKey=<token>&hospitalId=<id>)
-  GET    /departments/{departmentId}    → get_department
-  PUT    /departments/{departmentId}    → update_department
-  DELETE /departments/{departmentId}    → delete_department
+  POST   /departments                   â†’ create_department
+  GET    /departments                   â†’ list_departments  (optional ?limit=N&lastKey=<token>&hospitalId=<id>)
+  GET    /departments/{departmentId}    â†’ get_department
+  PUT    /departments/{departmentId}    â†’ update_department
+  DELETE /departments/{departmentId}    â†’ delete_department
 
 Environment variables (required):
-  TABLE_NAME   – DynamoDB table name  (default: "Department")
-  AWS_REGION   – injected automatically by the Lambda runtime
+  TABLE_NAME   â€“ DynamoDB table name  (default: "Department")
+  AWS_REGION   â€“ injected automatically by the Lambda runtime
 
 Department schema
 -----------------
@@ -45,9 +45,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME: str = os.environ.get("TABLE_NAME", "Department")
+DYNAMODB_REGION: str = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 PARTITION_KEY: str = "departmentId"
 
-_dynamodb = boto3.resource("dynamodb")
+_dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table = _dynamodb.Table(TABLE_NAME)
 
 # ---------------------------------------------------------------------------
@@ -173,9 +174,9 @@ def list_departments(event: dict) -> dict:
     GET /departments
     Returns a paginated list of departments.
     Query params:
-      limit      – max items per page (default 20, max 100)
-      lastKey    – opaque pagination token returned by a previous call
-      hospitalId – optional filter by hospitalId
+      limit      â€“ max items per page (default 20, max 100)
+      lastKey    â€“ opaque pagination token returned by a previous call
+      hospitalId â€“ optional filter by hospitalId
     """
     query_params = event.get("queryStringParameters") or {}
 
@@ -330,3 +331,4 @@ def lambda_handler(event: dict, context: Any) -> dict:
     except Exception:
         logger.exception("Unhandled exception in handler %s", handler_fn.__name__)
         return _error(500, "Internal server error.")
+

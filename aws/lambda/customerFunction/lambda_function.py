@@ -1,17 +1,17 @@
-"""
-AWS Lambda – Customer CRUD
+﻿"""
+AWS Lambda â€“ Customer CRUD
 ==========================
 Handles the following API Gateway (HTTP API or REST API) proxy events:
 
-  POST   /customers                 → create_customer
-  GET    /customers                 → list_customers   (optional ?limit=N&lastKey=<token>)
-  GET    /customers/{customerId}    → get_customer
-  PUT    /customers/{customerId}    → update_customer
-  DELETE /customers/{customerId}    → delete_customer
+  POST   /customers                 â†’ create_customer
+  GET    /customers                 â†’ list_customers   (optional ?limit=N&lastKey=<token>)
+  GET    /customers/{customerId}    â†’ get_customer
+  PUT    /customers/{customerId}    â†’ update_customer
+  DELETE /customers/{customerId}    â†’ delete_customer
 
 Environment variables (required):
-  TABLE_NAME   – DynamoDB table name  (default: "Customers")
-  AWS_REGION   – injected automatically by the Lambda runtime
+  TABLE_NAME   â€“ DynamoDB table name  (default: "Customers")
+  AWS_REGION   â€“ injected automatically by the Lambda runtime
 
 Customer schema
 ---------------
@@ -48,9 +48,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME: str = os.environ.get("TABLE_NAME", "Customer")
+DYNAMODB_REGION: str = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 PARTITION_KEY: str = "customerId"
 
-_dynamodb = boto3.resource("dynamodb")
+_dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table = _dynamodb.Table(TABLE_NAME)
 
 # ---------------------------------------------------------------------------
@@ -185,8 +186,8 @@ def list_customers(event: dict) -> dict:
     GET /customers
     Returns a paginated list of all customers.
     Query params:
-      limit   – max items per page (default 20, max 100)
-      lastKey – opaque pagination token returned by a previous call
+      limit   â€“ max items per page (default 20, max 100)
+      lastKey â€“ opaque pagination token returned by a previous call
     """
     query_params = event.get("queryStringParameters") or {}
 
@@ -319,7 +320,7 @@ def delete_customer(event: dict) -> dict:
 # Router
 # ---------------------------------------------------------------------------
 
-# Mapping: (HTTP method, has customerId?) → handler function
+# Mapping: (HTTP method, has customerId?) â†’ handler function
 _ROUTES: dict[tuple[str, bool], Any] = {
     ("POST",   False): create_customer,
     ("GET",    False): list_customers,
@@ -345,3 +346,4 @@ def lambda_handler(event: dict, context: Any) -> dict:
     except Exception:
         logger.exception("Unhandled exception in handler %s", handler_fn.__name__)
         return _error(500, "Internal server error.")
+

@@ -1,47 +1,51 @@
-import { useState } from "react";
-import { motion } from "motion/react";
-import { ProgressSteps } from "../components/ProgressSteps";
-import { Step1HospitalSelection } from "../components/review-steps/Step1HospitalSelection";
-import { Step2Insurance } from "../components/review-steps/Step2Insurance";
-import { Step3MedicalRecords } from "../components/review-steps/Step3MedicalRecords";
-import { Step4ReviewSubmission } from "../components/review-steps/Step4ReviewSubmission";
+import { useState } from "react"
+import { motion } from "motion/react"
+import { ProgressSteps } from "../components/ProgressSteps"
+import { Step1HospitalSelection } from "../components/review-steps/Step1HospitalSelection"
+import { Step2Insurance } from "../components/review-steps/Step2Insurance"
+import { Step3MedicalRecords } from "../components/review-steps/Step3MedicalRecords"
+import { Step4ReviewSubmission } from "../components/review-steps/Step4ReviewSubmission"
 
 const STEPS = [
   {
     number: 1,
     title: "Hospital & Documents",
-    description: "Select hospital and verify",
+    description: "Select hospital and verify"
   },
   {
     number: 2,
     title: "Insurance",
-    description: "Optional coverage details",
+    description: "Optional coverage details"
   },
   {
     number: 3,
     title: "Medical Records",
-    description: "AI extracts details",
+    description: "AI extracts details"
   },
   {
     number: 4,
     title: "Review",
-    description: "Rate and submit",
-  },
-];
+    description: "Rate and submit"
+  }
+]
 
 export function CreateReview() {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     // Step 1
     hospitalId: "",
     verificationFiles: [] as File[],
     documentsVerified: false,
+    documentIds: [] as string[], // s3 keys from Step 1 bill validation
+    payment: null as any, // payment object from bill processing
 
     // Step 2
     hasInsurance: false,
-    insuranceCompany: "",
+    insuranceCompanyId: "",
     claimFiles: [] as File[],
     claimVerified: true,
+    claimData: null as any, // claim object from claim processing
+    claimDocumentIds: [] as string[], // s3 keys from Step 2 claim validation
 
     // Step 3
     medicalRecordFiles: [] as File[],
@@ -54,31 +58,32 @@ export function CreateReview() {
     procedureDate: "",
 
     // Step 4
+    doctorId: "",
     hospitalRating: 0,
     hospitalReview: "",
     doctorRating: 0,
     doctorReview: "",
     totalCost: 0,
-    insuranceCovered: 0,
-  });
+    insuranceCovered: 0
+  })
 
   const updateFormData = (stepData: any) => {
-    setFormData((prev) => ({ ...prev, ...stepData }));
-  };
+    setFormData((prev) => ({ ...prev, ...stepData }))
+  }
 
   const handleNext = () => {
     if (currentStep < STEPS.length) {
-      setCurrentStep(currentStep + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setCurrentStep(currentStep + 1)
+      window.scrollTo({ top: 0, behavior: "smooth" })
     }
-  };
+  }
 
   const handleBack = () => {
     if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setCurrentStep(currentStep - 1)
+      window.scrollTo({ top: 0, behavior: "smooth" })
     }
-  };
+  }
 
   return (
     <div className="min-h-full bg-gray-50 py-8">
@@ -89,9 +94,12 @@ export function CreateReview() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create a Verified Review</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Create a Verified Review
+          </h1>
           <p className="text-gray-600">
-            Help others make informed healthcare decisions with your authentic experience
+            Help others make informed healthcare decisions with your authentic
+            experience
           </p>
         </motion.div>
 
@@ -105,7 +113,7 @@ export function CreateReview() {
               data={{
                 hospitalId: formData.hospitalId,
                 verificationFiles: formData.verificationFiles,
-                documentsVerified: formData.documentsVerified,
+                documentsVerified: formData.documentsVerified
               }}
               onUpdate={updateFormData}
               onNext={handleNext}
@@ -116,9 +124,9 @@ export function CreateReview() {
             <Step2Insurance
               data={{
                 hasInsurance: formData.hasInsurance,
-                insuranceCompany: formData.insuranceCompany,
+                insuranceCompanyId: formData.insuranceCompanyId,
                 claimFiles: formData.claimFiles,
-                claimVerified: formData.claimVerified,
+                claimVerified: formData.claimVerified
               }}
               onUpdate={updateFormData}
               onNext={handleNext}
@@ -136,7 +144,7 @@ export function CreateReview() {
                 doctorName: formData.doctorName,
                 diagnosis: formData.diagnosis,
                 medications: formData.medications,
-                procedureDate: formData.procedureDate,
+                procedureDate: formData.procedureDate
               }}
               onUpdate={updateFormData}
               onNext={handleNext}
@@ -155,6 +163,18 @@ export function CreateReview() {
                 insuranceCovered: formData.insuranceCovered,
                 doctorName: formData.doctorName,
                 surgeryType: formData.surgeryType,
+                doctorId: formData.doctorId,
+                serviceRating: (formData as any).serviceRating ?? 0,
+                maintenanceRating: (formData as any).maintenanceRating ?? 0,
+                foodRating: (formData as any).foodRating ?? 0,
+                cleanlinessRating: (formData as any).cleanlinessRating ?? 0,
+                staffRating: (formData as any).staffRating ?? 0,
+                bedsideMannerRating: (formData as any).bedsideMannerRating ?? 0,
+                expertiseRating: (formData as any).expertiseRating ?? 0,
+                communicationRating: (formData as any).communicationRating ?? 0,
+                waitTimeRating: (formData as any).waitTimeRating ?? 0,
+                thoroughnessRating: (formData as any).thoroughnessRating ?? 0,
+                followUpRating: (formData as any).followUpRating ?? 0
               }}
               onUpdate={updateFormData}
               onBack={handleBack}
@@ -164,5 +184,5 @@ export function CreateReview() {
         </div>
       </div>
     </div>
-  );
+  )
 }

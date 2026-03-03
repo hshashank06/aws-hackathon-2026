@@ -11,9 +11,9 @@ Default model: amazon.nova-lite-v1:0
   - Fast, cheap, no AWS Marketplace subscription / payment required.
   - Set env var BEDROCK_MODEL_ID to switch to any other Bedrock model.
 
-Medical extraction model: us.anthropic.claude-sonnet-4-6
-  - Claude Sonnet 4.6 via us-east-1 cross-region inference profile.
-  - Higher accuracy for structured medical record parsing.
+Medical extraction model: amazon.nova-pro-v1:0
+  - Amazon Nova Pro -- high-accuracy, no marketplace subscription required.
+  - Replaces Claude Sonnet 4.6 for structured medical record parsing.
   - Set env var MEDICAL_MODEL_ID to override.
 
 Public API
@@ -56,16 +56,17 @@ BEDROCK_MODEL_ID: str = os.environ.get(
     "amazon.nova-lite-v1:0",
 )
 
-# Claude Sonnet 4.6 (cross-region inference profile, us-east-1) is used for
-# medical record extraction where accuracy matters more than cost.
+# Amazon Nova Pro is used for medical record extraction where accuracy matters.
+# Nova Pro matches Claude Sonnet capability without requiring a marketplace
+# subscription / separate payment method.
 # Override via MEDICAL_MODEL_ID env var with any model ID or full ARN.
 # Alternatives (set as env var):
-#   anthropic.claude-3-5-haiku-20241022-v1:0          -- cheaper, faster
-#   us.anthropic.claude-3-5-sonnet-20241022-v2:0      -- Claude 3.5 Sonnet
-#   arn:aws:bedrock:us-east-1:<account>:inference-profile/us.anthropic.claude-sonnet-4-6
+#   amazon.nova-lite-v1:0                             -- cheaper, faster
+#   amazon.nova-premier-v1:0                          -- highest capability
+#   us.amazon.nova-pro-v1:0                           -- cross-region inference
 MEDICAL_MODEL_ID: str = os.environ.get(
     "MEDICAL_MODEL_ID",
-    "us.anthropic.claude-sonnet-4-6",
+    "amazon.nova-pro-v1:0",
 )
 
 EMBEDDING_MODEL_ID: str = os.environ.get(
@@ -179,7 +180,7 @@ def extract_structured_fields(prompt: str) -> dict[str, Any]:
 
 def extract_structured_fields_medical(prompt: str) -> dict[str, Any]:
     """
-    Same as extract_structured_fields but uses MEDICAL_MODEL_ID (Claude 3.5 Haiku
+    Same as extract_structured_fields but uses MEDICAL_MODEL_ID (Amazon Nova Pro
     by default) for higher accuracy on medical record parsing.
 
     Never raises -- returns {} on any failure.

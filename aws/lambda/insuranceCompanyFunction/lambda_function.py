@@ -1,17 +1,17 @@
-"""
-AWS Lambda – InsuranceCompany CRUD
+﻿"""
+AWS Lambda â€“ InsuranceCompany CRUD
 ====================================
 Handles the following API Gateway (HTTP API or REST API) proxy events:
 
-  POST   /insurance-companies                           → create_insurance_company
-  GET    /insurance-companies                           → list_insurance_companies  (optional ?limit=N&lastKey=<token>)
-  GET    /insurance-companies/{insuranceCompanyId}      → get_insurance_company
-  PUT    /insurance-companies/{insuranceCompanyId}      → update_insurance_company
-  DELETE /insurance-companies/{insuranceCompanyId}      → delete_insurance_company
+  POST   /insurance-companies                           â†’ create_insurance_company
+  GET    /insurance-companies                           â†’ list_insurance_companies  (optional ?limit=N&lastKey=<token>)
+  GET    /insurance-companies/{insuranceCompanyId}      â†’ get_insurance_company
+  PUT    /insurance-companies/{insuranceCompanyId}      â†’ update_insurance_company
+  DELETE /insurance-companies/{insuranceCompanyId}      â†’ delete_insurance_company
 
 Environment variables (required):
-  TABLE_NAME   – DynamoDB table name  (default: "InsuranceCompany")
-  AWS_REGION   – injected automatically by the Lambda runtime
+  TABLE_NAME   â€“ DynamoDB table name  (default: "InsuranceCompany")
+  AWS_REGION   â€“ injected automatically by the Lambda runtime
 
 InsuranceCompany schema
 -----------------------
@@ -43,9 +43,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME: str = os.environ.get("TABLE_NAME", "InsuranceCompany")
+DYNAMODB_REGION: str = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 PARTITION_KEY: str = "insuranceCompanyId"
 
-_dynamodb = boto3.resource("dynamodb")
+_dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table = _dynamodb.Table(TABLE_NAME)
 
 # ---------------------------------------------------------------------------
@@ -170,8 +171,8 @@ def list_insurance_companies(event: dict) -> dict:
     GET /insurance-companies
     Returns a paginated list of all insurance companies.
     Query params:
-      limit   – max items per page (default 20, max 100)
-      lastKey – opaque pagination token returned by a previous call
+      limit   â€“ max items per page (default 20, max 100)
+      lastKey â€“ opaque pagination token returned by a previous call
     """
     query_params = event.get("queryStringParameters") or {}
 
@@ -322,3 +323,4 @@ def lambda_handler(event: dict, context: Any) -> dict:
     except Exception:
         logger.exception("Unhandled exception in handler %s", handler_fn.__name__)
         return _error(500, "Internal server error.")
+

@@ -1,0 +1,8 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/reviews/documents",
+  "headers": { "Content-Type": "application/json" },
+  "body": "{\"documentId\": \"documents/hospitalBills/customer_id_06kzw/hospital_bill_abc123.jpg\"}",
+  "pathParameters": null,
+  "queryStringParameters": null
+}

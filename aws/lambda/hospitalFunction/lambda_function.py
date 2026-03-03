@@ -46,10 +46,11 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-TABLE_NAME: str = os.environ.get("TABLE_NAME", "Hospital")
-PARTITION_KEY: str = "hospitalId"
+TABLE_NAME:       str = os.environ.get("TABLE_NAME",       "Hospital")
+DYNAMODB_REGION:  str = os.environ.get("DYNAMODB_REGION",  "eu-north-1")
+PARTITION_KEY:    str = "hospitalId"
 
-_dynamodb = boto3.resource("dynamodb")
+_dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table = _dynamodb.Table(TABLE_NAME)
 
 # ---------------------------------------------------------------------------

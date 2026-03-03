@@ -1,17 +1,17 @@
-"""
-AWS Lambda – Doctor CRUD
+﻿"""
+AWS Lambda â€“ Doctor CRUD
 =========================
 Handles the following API Gateway (HTTP API or REST API) proxy events:
 
-  POST   /doctors               → create_doctor
-  GET    /doctors               → list_doctors   (optional ?limit=N&lastKey=<token>)
-  GET    /doctors/{doctorId}    → get_doctor
-  PUT    /doctors/{doctorId}    → update_doctor
-  DELETE /doctors/{doctorId}    → delete_doctor
+  POST   /doctors               â†’ create_doctor
+  GET    /doctors               â†’ list_doctors   (optional ?limit=N&lastKey=<token>)
+  GET    /doctors/{doctorId}    â†’ get_doctor
+  PUT    /doctors/{doctorId}    â†’ update_doctor
+  DELETE /doctors/{doctorId}    â†’ delete_doctor
 
 Environment variables (required):
-  TABLE_NAME   – DynamoDB table name  (default: "Doctor")
-  AWS_REGION   – injected automatically by the Lambda runtime
+  TABLE_NAME   â€“ DynamoDB table name  (default: "Doctor")
+  AWS_REGION   â€“ injected automatically by the Lambda runtime
 
 Doctor schema
 -------------
@@ -43,9 +43,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME: str = os.environ.get("TABLE_NAME", "Doctor")
+DYNAMODB_REGION: str = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 PARTITION_KEY: str = "doctorId"
 
-_dynamodb = boto3.resource("dynamodb")
+_dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 table = _dynamodb.Table(TABLE_NAME)
 
 # ---------------------------------------------------------------------------
@@ -170,8 +171,8 @@ def list_doctors(event: dict) -> dict:
     GET /doctors
     Returns a paginated list of all doctors.
     Query params:
-      limit   – max items per page (default 20, max 100)
-      lastKey – opaque pagination token returned by a previous call
+      limit   â€“ max items per page (default 20, max 100)
+      lastKey â€“ opaque pagination token returned by a previous call
     """
     query_params = event.get("queryStringParameters") or {}
 
@@ -322,3 +323,4 @@ def lambda_handler(event: dict, context: Any) -> dict:
     except Exception:
         logger.exception("Unhandled exception in handler %s", handler_fn.__name__)
         return _error(500, "Internal server error.")
+
