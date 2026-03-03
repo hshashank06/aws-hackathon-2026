@@ -17,7 +17,7 @@
     - All 6 Lambda functions already deployed
 
 .USAGE
-    .\create-api-gateway.ps1 -Region ap-south-1 -AccountId 123456789012
+    .\create-api-gateway.ps1 -Region us-east-1 -AccountId 123456789012
 #>
 
 param(
@@ -31,6 +31,7 @@ param(
     [string] $HospitalFn         = "hospitalFunction",
     [string] $InsuranceCompanyFn = "insuranceCompanyFunction",
     [string] $InsurancePolicyFn  = "insurancePolicyFunction",
+    [string] $ReviewFn            = "reviewFunction",
 
     [string] $ApiName            = "HealthcareAPI",
     [string] $StageName          = '$default'
@@ -113,6 +114,7 @@ $intDoctor           = New-LambdaIntegration $DoctorFn
 $intHospital         = New-LambdaIntegration $HospitalFn
 $intInsuranceCompany = New-LambdaIntegration $InsuranceCompanyFn
 $intInsurancePolicy  = New-LambdaIntegration $InsurancePolicyFn
+$intReview           = New-LambdaIntegration $ReviewFn
 
 Write-Host "`nIntegration IDs:" -ForegroundColor Yellow
 Write-Host "  Customer         : $intCustomer"
@@ -121,6 +123,7 @@ Write-Host "  Doctor           : $intDoctor"
 Write-Host "  Hospital         : $intHospital"
 Write-Host "  InsuranceCompany : $intInsuranceCompany"
 Write-Host "  InsurancePolicy  : $intInsurancePolicy"
+Write-Host "  Review           : $intReview"
 
 # ---------------------------------------------------------------------------
 # 3. Create routes
@@ -179,6 +182,15 @@ New-Route "GET"    "/insurance-policies/{policyId}"    $intInsurancePolicy
 New-Route "PUT"    "/insurance-policies/{policyId}"    $intInsurancePolicy
 New-Route "DELETE" "/insurance-policies/{policyId}"    $intInsurancePolicy
 
+# --- Reviews ---
+New-Route "POST"   "/reviews/presign-upload"           $intReview
+New-Route "POST"   "/reviews/process-document"         $intReview
+New-Route "POST"   "/reviews"                          $intReview
+New-Route "GET"    "/reviews"                          $intReview
+New-Route "GET"    "/reviews/{reviewId}"               $intReview
+New-Route "PUT"    "/reviews/{reviewId}"               $intReview
+New-Route "DELETE" "/reviews/{reviewId}"               $intReview
+
 # ---------------------------------------------------------------------------
 # 4. Create auto-deployed stage
 # ---------------------------------------------------------------------------
@@ -216,6 +228,7 @@ Add-LambdaPermission $DoctorFn
 Add-LambdaPermission $HospitalFn
 Add-LambdaPermission $InsuranceCompanyFn
 Add-LambdaPermission $InsurancePolicyFn
+Add-LambdaPermission $ReviewFn
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -238,3 +251,7 @@ Write-Host "   GET  $ApiEndpoint/doctors"
 Write-Host "   GET  $ApiEndpoint/hospitals"
 Write-Host "   GET  $ApiEndpoint/insurance-companies"
 Write-Host "   GET  $ApiEndpoint/insurance-policies"
+Write-Host "   POST $ApiEndpoint/reviews/presign-upload"
+Write-Host "   POST $ApiEndpoint/reviews/process-document"
+Write-Host "   GET  $ApiEndpoint/reviews"
+Write-Host "   GET  $ApiEndpoint/reviews/{reviewId}"

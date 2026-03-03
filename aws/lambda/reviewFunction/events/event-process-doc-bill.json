@@ -1,0 +1,8 @@
+{
+  "httpMethod": "POST",
+  "path": "/reviews/process-document",
+  "headers": { "Content-Type": "application/json" },
+  "body": "{\"documentId\": \"documents/hospitalBills/customer_id_06kzw_f3a9d812c441.png\", \"s3Key\": \"documents/hospitalBills/customer_id_06kzw_f3a9d812c441.png\", \"documentType\": \"hospitalBill\"}",
+  "pathParameters": null,
+  "queryStringParameters": null
+}
