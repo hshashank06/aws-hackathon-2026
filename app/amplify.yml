@@ -1,6 +1,6 @@
 version: 1
 applications:
-  - appRoot: .                    # Root of your application (adjust if needed)
+  - appRoot: src                    # Root of your application (adjust if needed)
     env:
       variables:
         NODE_ENV: production
