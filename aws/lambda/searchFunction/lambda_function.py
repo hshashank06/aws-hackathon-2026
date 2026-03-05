@@ -775,7 +775,7 @@ def save_search_status(search_id: str, status: str, query: str = None, customer_
 
 def get_search_status(search_id: str) -> dict:
     """
-    Get search status from DynamoDB.
+    Get search status from DynamoDB with strong consistency.
     
     Args:
         search_id: Unique search identifier
@@ -784,7 +784,11 @@ def get_search_status(search_id: str) -> dict:
         dict: Search record or None if not found
     """
     try:
-        response = search_results_table.get_item(Key={"searchId": search_id})
+        # Use ConsistentRead=True to get the latest data immediately
+        response = search_results_table.get_item(
+            Key={"searchId": search_id},
+            ConsistentRead=True  # Strong consistency - read latest data
+        )
         item = response.get("Item")
         
         if item:
@@ -1282,19 +1286,18 @@ def process_search_async(event: dict) -> None:
         save_search_status(search_id, "processing", partial_results=partial_results_2, progress=60)
 
 
-        # Step 4: Build enriched response
-        logger.info("STEP 4: Building enriched response")
+        # Step 4: Build enriched response (PARALLELIZED)
+        logger.info("STEP 4: Building enriched response (parallel)")
         
-        enriched_hospitals = []
-        
-        for hospital_llm in hospitals_llm:
+        def enrich_single_hospital(hospital_llm):
+            """Enrich a single hospital with all its data (runs in parallel)"""
             hospital_id = hospital_llm["hospitalId"]
             
             # Get hospital data
             hospital_data = hospitals_data.get(hospital_id)
             if not hospital_data:
                 logger.warning("Hospital data not found | HospitalId=%s", hospital_id)
-                continue
+                return None
             
             # Get reviews for this hospital
             reviews = hospital_reviews.get(hospital_id, [])
@@ -1321,10 +1324,10 @@ def process_search_async(event: dict) -> None:
                         doctor_reviews_list
                     )
                     top_doctors.append(enriched_doctor)
-                    logger.info("Doctor enriched successfully | DoctorId=%s | HospitalId=%s", doctor_id, hospital_id)
+                    logger.debug("Doctor enriched | DoctorId=%s | HospitalId=%s", doctor_id, hospital_id)
                 else:
                     logger.warning(
-                        "Doctor data not found - skipping | DoctorId=%s | HospitalId=%s | Reason=API fetch failed or returned 404",
+                        "Doctor data not found - skipping | DoctorId=%s | HospitalId=%s",
                         doctor_id,
                         hospital_id
                     )
@@ -1337,7 +1340,27 @@ def process_search_async(event: dict) -> None:
                 len(top_doctors)
             )
             
-            enriched_hospitals.append(enriched_hospital)
+            return enriched_hospital
+        
+        # Enrich all hospitals in parallel
+        enriched_hospitals = []
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {executor.submit(enrich_single_hospital, h): h for h in hospitals_llm}
+            
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        enriched_hospitals.append(result)
+                except Exception as e:
+                    hospital_llm = futures[future]
+                    logger.error(
+                        "Failed to enrich hospital | HospitalId=%s | Error=%s",
+                        hospital_llm.get("hospitalId"),
+                        str(e)
+                    )
+        
+        logger.info("All hospitals enriched | Total=%d", len(enriched_hospitals))
         
         # Build final response
         elapsed = time.time() - start_time

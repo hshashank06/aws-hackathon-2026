@@ -107,18 +107,18 @@ export function useProgressiveSearch(query: string) {
               console.log('Search complete! Full response:', statusData);
               window.clearInterval(pollInterval);
               
-              // The results structure from DynamoDB is: statusData.results (which contains the full response)
-              const fullResults = statusData.results;
-              console.log('Full results object:', fullResults);
+              // When status is complete, statusData contains the full search response directly
+              // Structure: { success, metadata, results: { hospitals: [...] }, userIntent, ... }
+              const hospitals = statusData.results?.hospitals || [];
+              const aiSummary = statusData.userIntent?.aiSummary || statusData.results?.aiSummary || 'Search completed successfully';
               
-              // Extract hospitals from results.results.hospitals
-              const hospitals = fullResults?.results?.hospitals || [];
               console.log('Extracted hospitals:', hospitals.length);
+              console.log('AI Summary:', aiSummary);
               
               setState({
                 status: 'complete',
                 progress: 100,
-                aiSummary: fullResults?.userIntent?.aiSummary || 'Search completed successfully',
+                aiSummary: aiSummary,
                 hospitals: hospitals,
               });
             } else if (statusData.status === 'error') {
@@ -134,7 +134,7 @@ export function useProgressiveSearch(query: string) {
             console.error('Polling error:', error);
             // Continue polling - don't fail on single poll error
           }
-        }, 2000); // Poll every 2 seconds
+        }, 5000); // Poll every 5 seconds
       } catch (error) {
         console.error('Search initiation failed:', error);
         setState({
