@@ -38,7 +38,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -60,7 +59,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "FXGJQUGRJQ")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "TOUEUHIO1O")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
@@ -73,6 +72,7 @@ DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=BEDROCK_REGION)
 dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
 search_results_table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+lambda_client = boto3.client("lambda", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 # Constants
 MAX_WORKERS = 20  # For parallel API calls
@@ -249,68 +249,61 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
                 sessionId=session_id,
                 inputText=query,
             )
-        response = bedrock_agent_runtime.invoke_agent(
-            agentId=BEDROCK_AGENT_ID,
-            agentAliasId=BEDROCK_AGENT_ALIAS_ID,
-            sessionId=session_id,
-            inputText=query,
-        )
-        
-        # Properly handle streaming response - collect ALL chunks
-        full_response = ""
-        chunk_count = 0
-        
-        # Process all events in the completion stream
-        # CRITICAL: Must iterate through ALL events to get complete response
-        completion_stream = response.get("completion", [])
-        
-        for event in completion_stream:
-            # Log event type for debugging
-            event_type = list(event.keys())[0] if event else "unknown"
-            logger.debug("Event received | Type=%s", event_type)
             
-            if "chunk" in event:
-                chunk = event["chunk"]
-                if "bytes" in chunk:
-                    # Decode bytes and append to full response
-                    chunk_data = chunk["bytes"].decode("utf-8")
-                    full_response += chunk_data
-                    chunk_count += 1
-                    logger.debug("Chunk %d received | Length=%d | Content=%s", 
-                                chunk_count, len(chunk_data), chunk_data[:100])
+            # Properly handle streaming response - collect ALL chunks
+            full_response = ""
+            chunk_count = 0
             
-            # Handle other event types that might contain data
-            elif "trace" in event:
-                logger.debug("Trace event received")
-            elif "returnControl" in event:
-                logger.debug("ReturnControl event received")
-            elif "internalServerException" in event:
-                logger.error("InternalServerException in stream")
-                raise Exception("Bedrock Agent internal server error")
-            elif "validationException" in event:
-                logger.error("ValidationException in stream")
-                raise Exception("Bedrock Agent validation error")
-        
-        # Ensure we received some response
-        if not full_response:
-            logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
-            raise Exception("Empty response from Bedrock Agent")
-        
-        elapsed = time.time() - start_time
-        logger.info(
-            "Bedrock Agent response received | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
-            chunk_count,
-            len(full_response),
-            elapsed
-        )
-        
-        # Log full response for debugging (truncated to 3000 chars)
-        logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
-        if len(full_response) > 3000:
-            logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
-        
-        # Parse JSON response - extract JSON from conversational text
-        try:
+            # Process all events in the completion stream
+            # CRITICAL: Must iterate through ALL events to get complete response
+            completion_stream = response.get("completion", [])
+            
+            for event in completion_stream:
+                # Log event type for debugging
+                event_type = list(event.keys())[0] if event else "unknown"
+                logger.debug("Event received | Type=%s", event_type)
+                
+                if "chunk" in event:
+                    chunk = event["chunk"]
+                    if "bytes" in chunk:
+                        # Decode bytes and append to full response
+                        chunk_data = chunk["bytes"].decode("utf-8")
+                        full_response += chunk_data
+                        chunk_count += 1
+                        logger.debug("Chunk %d received | Length=%d | Content=%s", 
+                                    chunk_count, len(chunk_data), chunk_data[:100])
+                
+                # Handle other event types that might contain data
+                elif "trace" in event:
+                    logger.debug("Trace event received")
+                elif "returnControl" in event:
+                    logger.debug("ReturnControl event received")
+                elif "internalServerException" in event:
+                    logger.error("InternalServerException in stream")
+                    raise Exception("Bedrock Agent internal server error")
+                elif "validationException" in event:
+                    logger.error("ValidationException in stream")
+                    raise Exception("Bedrock Agent validation error")
+            
+            # Ensure we received some response
+            if not full_response:
+                logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
+                raise Exception("Empty response from Bedrock Agent")
+            
+            elapsed = time.time() - start_time
+            logger.info(
+                "Bedrock Agent response received | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
+                chunk_count,
+                len(full_response),
+                elapsed
+            )
+            
+            # Log full response for debugging (truncated to 3000 chars)
+            logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
+            if len(full_response) > 3000:
+                logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
+            
+            # Parse JSON response - extract JSON from conversational text
             # Find the first '{' and extract JSON from there
             json_start = full_response.find('{')
             if json_start == -1:
@@ -343,6 +336,7 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
                 "aiSummary" in llm_data
             )
             return llm_data
+        
         except json.JSONDecodeError as e:
             logger.error("Failed to parse LLM response as JSON | Attempt=%d | Error=%s | Response=%s", attempt, str(e), full_response[:500])
             logger.error("JSON string that failed to parse (last 500 chars): %s", json_str[-500:] if len(json_str) > 500 else json_str)
@@ -351,7 +345,7 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
                 time.sleep(1)  # Wait 1 second before retry
                 continue
             raise ValueError(f"Invalid JSON response from Bedrock Agent after {max_retries} attempts: {str(e)}")
-    
+        
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_msg = e.response["Error"]["Message"]
@@ -366,7 +360,7 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
                 time.sleep(1)  # Wait 1 second before retry
                 continue
             raise Exception(f"Bedrock Agent error after {max_retries} attempts: {error_code} - {error_msg}")
-    
+        
         except Exception as e:
             logger.error("Unexpected error invoking Bedrock Agent | Attempt=%d | Error=%s", attempt, str(e))
             if attempt < max_retries:
@@ -955,7 +949,7 @@ def search_hospitals(event: dict) -> dict:
     1. Parse request and validate
     2. Generate searchId
     3. Save initial status as "processing"
-    4. Start async thread to process search
+    4. Invoke Lambda asynchronously to process search
     5. Return searchId immediately
     
     Args:
@@ -996,14 +990,28 @@ def search_hospitals(event: dict) -> dict:
         # Save initial status
         save_search_results(search_id, "processing")
         
-        # Start async processing in background thread
-        thread = threading.Thread(
-            target=process_search_async,
-            args=(search_id, query, customer_id, insurance_id),
-            daemon=True
-        )
-        thread.start()
-        logger.info("Async search thread started | SearchId=%s", search_id)
+        # Invoke Lambda asynchronously to process search
+        function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        
+        async_payload = {
+            "asyncSearch": True,
+            "searchId": search_id,
+            "query": query,
+            "customerId": customer_id,
+            "insuranceId": insurance_id
+        }
+        
+        try:
+            lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType="Event",  # Async invocation
+                Payload=json.dumps(async_payload)
+            )
+            logger.info("Async Lambda invoked | SearchId=%s", search_id)
+        except Exception as e:
+            logger.error("Failed to invoke async Lambda | SearchId=%s | Error=%s", search_id, str(e))
+            save_search_results(search_id, "error", error="Failed to start async processing")
+            return _error(500, "Failed to initiate search processing")
         
         # Return immediately with searchId
         response_body = {
@@ -1318,14 +1326,29 @@ def lambda_handler(event: dict, context: Any) -> dict:
       POST /search                                    → search_hospitals (initiate async search)
       GET  /search/{searchId}                         → get_search_status (poll for results)
       GET  /hospitals/{hospitalId}/doctors            → get_hospital_doctors (lazy load doctors)
+      
+    Async Processing:
+      asyncSearch=True in event                       → process_search_async (background processing)
     
     Args:
-        event: API Gateway event
+        event: API Gateway event or async processing event
         context: Lambda context
     
     Returns:
-        dict: API Gateway response
+        dict: API Gateway response or None for async processing
     """
+    # Check if this is an async search processing invocation
+    if event.get("asyncSearch"):
+        search_id = event.get("searchId")
+        query = event.get("query")
+        customer_id = event.get("customerId")
+        insurance_id = event.get("insuranceId")
+        
+        logger.info("Async search processing invocation | SearchId=%s", search_id)
+        process_search_async(search_id, query, customer_id, insurance_id)
+        return None  # No response needed for async invocation
+    
+    # Regular API Gateway routing
     method = (
         event.get("httpMethod") 
         or event.get("requestContext", {}).get("http", {}).get("method", "")

@@ -1,0 +1,17 @@
+{
+  "httpMethod": "GET",
+  "path": "/search/invalid_search_id_999",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "pathParameters": {
+    "searchId": "invalid_search_id_999"
+  },
+  "requestContext": {
+    "requestId": "test-request-006",
+    "http": {
+      "method": "GET",
+      "path": "/search/invalid_search_id_999"
+    }
+  }
+}

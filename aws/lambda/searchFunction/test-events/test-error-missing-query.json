@@ -1,0 +1,15 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\": \"customer_789\"}",
+  "requestContext": {
+    "requestId": "test-request-005",
+    "http": {
+      "method": "POST",
+      "path": "/search"
+    }
+  }
+}

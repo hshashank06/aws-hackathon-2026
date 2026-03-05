@@ -12,86 +12,76 @@ const USE_REAL_API = true; // Set to false to use mock data
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Adapter: Convert EnrichedHospital from Lambda to Hospital for UI
+ * Adapter: Convert backend hospital response to Hospital for UI
+ * Includes null/undefined checks to prevent NPEs
  */
-function adaptEnrichedHospitalToHospital(enriched: EnrichedHospital): Hospital {
-  // Extract insurance companies, handle empty array
-  const acceptedInsurance = enriched.insuranceInfo?.acceptedCompanies?.length > 0
-    ? enriched.insuranceInfo.acceptedCompanies.map(ic => ic.insuranceCompanyName)
-    : ["Blue Cross", "United Health", "Aetna", "Medicare"]; // Default fallback
+function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
+  // Validate input
+  if (!enriched || typeof enriched !== 'object') {
+    console.warn('[API] Invalid hospital data:', enriched);
+    throw new Error('Invalid hospital data');
+  }
 
-  // Calculate cost range from average cost
-  const avgCost = enriched.stats?.averageCost || 300000;
-  
+  // Backend returns a simpler format
   return {
-    id: enriched.hospitalId,
-    name: enriched.hospitalName,
-    location: enriched.address,
-    rating: enriched.stats?.averageRating || 4.0,
-    reviewCount: enriched.stats?.totalReviews || 0,
-    imageUrl: enriched.images?.[0]?.url || "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400",
+    id: enriched.id || '',
+    name: enriched.name || 'Unknown Hospital',
+    location: enriched.location || 'Unknown Location',
+    rating: typeof enriched.rating === 'number' ? enriched.rating : 4.0,
+    reviewCount: typeof enriched.reviewCount === 'number' ? enriched.reviewCount : 0,
+    imageUrl: enriched.imageUrl || "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400",
     description: enriched.description || "",
-    specialties: enriched.services?.slice(0, 6) || [], // Take first 6 services as specialties
-    acceptedInsurance,
-    avgCostRange: {
-      min: Math.round(avgCost * 0.5), // Estimate min as 50% of average
-      max: Math.round(avgCost * 1.5), // Estimate max as 150% of average
-    },
-    aiRecommendation: enriched.aiInsights?.explanation || enriched.description || "Quality healthcare facility.",
-    doctors: enriched.topDoctors?.map(adaptEnrichedDoctorToDoctor) || [],
-    reviews: [], // Reviews would need separate API call or be included in response
-    
-    // Additional fields from Lambda response (extend Hospital type if needed)
-    trustScore: enriched.trustIndicators?.trustScore,
-    verificationBadge: enriched.trustIndicators?.verificationBadge,
-    claimApprovalRate: enriched.stats?.claimApprovalRate,
-    insuranceCoveragePercent: enriched.insuranceInfo?.userInsuranceMatch?.isAccepted 
-      ? Math.round((enriched.insuranceInfo.userInsuranceMatch.estimatedCoverage / 
-         (enriched.insuranceInfo.userInsuranceMatch.estimatedCoverage + 
-          enriched.insuranceInfo.userInsuranceMatch.estimatedOutOfPocket)) * 100)
-      : Math.round((enriched.stats?.claimApprovalRate || 0.85) * 100),
+    specialties: Array.isArray(enriched.specialties) ? enriched.specialties : [],
+    acceptedInsurance: Array.isArray(enriched.acceptedInsurance) 
+      ? enriched.acceptedInsurance 
+      : ["Blue Cross", "United Health", "Aetna", "Medicare"],
+    avgCostRange: enriched.avgCostRange && typeof enriched.avgCostRange === 'object'
+      ? {
+          min: typeof enriched.avgCostRange.min === 'number' ? enriched.avgCostRange.min : 0,
+          max: typeof enriched.avgCostRange.max === 'number' ? enriched.avgCostRange.max : 0,
+        }
+      : { min: 0, max: 0 },
+    aiRecommendation: enriched.aiRecommendation || "",
+    doctors: Array.isArray(enriched.doctors) ? enriched.doctors : [],
+    reviews: Array.isArray(enriched.reviews) ? enriched.reviews : [],
+    trustScore: typeof enriched.trustScore === 'number' ? enriched.trustScore : 85,
+    verificationBadge: enriched.verificationBadge || "gold",
+    insuranceCoveragePercent: typeof enriched.insuranceCoveragePercent === 'number' 
+      ? enriched.insuranceCoveragePercent 
+      : 0,
   };
 }
 
 /**
- * Adapter: Convert EnrichedDoctor from Lambda to Doctor for UI
+ * Adapter: Convert backend doctor response to Doctor for UI
  */
-function adaptEnrichedDoctorToDoctor(enriched: EnrichedDoctor): Doctor {
+function adaptEnrichedDoctorToDoctor(enriched: any): Doctor {
   return {
-    id: enriched.doctorId,
-    name: enriched.doctorName,
+    id: enriched.id,
+    name: enriched.name,
     specialty: enriched.specialty,
-    experience: parseInt(enriched.experience) || 10,
-    qualifications: [], // Not in current response
-    rating: enriched.stats.averageRating,
-    reviewCount: enriched.stats.totalReviews,
-    imageUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200", // Default image
-    aiSummary: enriched.aiReview?.summary || "",
-    reviews: enriched.recentReviews.map(r => ({
-      id: r.reviewId,
-      patientName: r.customerName,
-      rating: r.rating,
-      date: new Date(r.createdAt).toISOString().split('T')[0],
-      treatment: r.procedureType,
-      cost: 0, // Not in review response
-      insuranceCovered: 0, // Not in review response
-      comment: r.reviewText,
-      verified: r.verified,
-    })),
+    experience: enriched.experience || 10,
+    qualifications: enriched.qualifications || [],
+    rating: enriched.rating || 4.0,
+    reviewCount: enriched.reviewCount || 0,
+    imageUrl: enriched.imageUrl || "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200",
+    aiSummary: enriched.aiSummary || "",
+    reviews: enriched.reviews || [],
   };
 }
 
 /**
- * Call the real Lambda search endpoint
+ * Call the real Lambda search endpoint (async flow)
+ * Step 1: Initiate search and get searchId
  */
-async function callSearchAPI(query: string, customerId?: string): Promise<SearchResponse> {
+async function initiateSearch(query: string, customerId?: string): Promise<{ searchId: string; status: string }> {
   const requestBody = {
     query,
-    customerId: customerId || undefined,
+    customerId: customerId || "anonymous",
     userContext: {},
   };
 
-  console.log(`[API] Calling Lambda search endpoint: ${SEARCH_ENDPOINT}`);
+  console.log(`[API] Initiating search: ${SEARCH_ENDPOINT}`);
   console.log(`[API] Request:`, requestBody);
 
   const response = await fetch(SEARCH_ENDPOINT, {
@@ -107,14 +97,82 @@ async function callSearchAPI(query: string, customerId?: string): Promise<Search
   }
 
   const data = await response.json();
-  console.log(`[API] Response:`, data);
-
-  // Handle Lambda's response format (body might be stringified)
-  if (typeof data.body === "string") {
-    return JSON.parse(data.body);
-  }
+  console.log(`[API] Search initiated:`, data);
 
   return data;
+}
+
+/**
+ * Poll for search results
+ * Step 2: Poll until status is "complete" or "error"
+ */
+async function pollSearchStatus(searchId: string, maxAttempts: number = 30): Promise<SearchResponse> {
+  const pollInterval = 5000; // 5 seconds
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[API] Polling search status (attempt ${attempt}/${maxAttempts}): ${searchId}`);
+    
+    const response = await fetch(`${SEARCH_ENDPOINT}/${searchId}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Poll request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log(`[API] Poll response:`, data);
+
+    if (data.status === "complete") {
+      console.log(`[API] Search complete!`);
+      
+      // Validate response structure
+      if (!data.results || !data.results.hospitals) {
+        console.error(`[API] Invalid response structure:`, data);
+        throw new Error("Invalid search response format");
+      }
+      
+      return {
+        success: true,
+        results: {
+          aiSummary: data.results.aiSummary || "",
+          hospitals: data.results.hospitals || [],
+          totalMatches: (data.results.hospitals || []).length,
+        },
+      };
+    }
+
+    if (data.status === "error") {
+      console.error(`[API] Search failed:`, data.error);
+      throw new Error(data.error || "Search processing failed");
+    }
+
+    // Status is still "processing", wait and retry
+    if (attempt < maxAttempts) {
+      console.log(`[API] Status: processing, waiting ${pollInterval}ms...`);
+      await delay(pollInterval);
+    }
+  }
+
+  throw new Error("Search timeout: Results not ready after maximum polling attempts");
+}
+
+/**
+ * Call the real Lambda search endpoint (combines initiate + poll)
+ */
+async function callSearchAPI(query: string, customerId?: string): Promise<SearchResponse> {
+  // Step 1: Initiate search
+  const { searchId, status } = await initiateSearch(query, customerId);
+  
+  if (status === "error") {
+    throw new Error("Failed to initiate search");
+  }
+
+  // Step 2: Poll for results
+  return await pollSearchStatus(searchId);
 }
 
 /**
@@ -128,19 +186,29 @@ export async function searchHospitalsAPI(query: string, customerId?: string): Pr
   // Use real API if enabled
   if (USE_REAL_API) {
     try {
+      console.log(`[API] Starting async search for: "${query}"`);
       const response = await callSearchAPI(query, customerId);
 
-      if (!response.success) {
-        console.error("[API] Search failed:", response);
-        throw new Error("Search failed");
-      }
+      console.log(`[API] Search completed successfully`);
+      console.log(`[API] AI Summary:`, response.results.aiSummary);
+      console.log(`[API] Found ${response.results.hospitals.length} hospitals`);
 
-      console.log(`[API] Found ${response.results.totalMatches} hospitals`);
+      // Convert backend hospital format to UI Hospital format
+      // Filter out any invalid hospitals
+      const hospitals = response.results.hospitals
+        .map((h: any) => {
+          try {
+            return adaptEnrichedHospitalToHospital(h);
+          } catch (error) {
+            console.error('[API] Failed to adapt hospital:', error, h);
+            return null;
+          }
+        })
+        .filter((h: Hospital | null): h is Hospital => h !== null);
 
-      // Convert EnrichedHospital[] to Hospital[]
-      return response.results.hospitals.map(adaptEnrichedHospitalToHospital);
+      return hospitals;
     } catch (error) {
-      console.error("[API] Error calling search API:", error);
+      console.error("[API] Error during search:", error);
       console.log("[API] Falling back to mock data");
       // Fall back to mock data on error
       return searchMockHospitals(query);
