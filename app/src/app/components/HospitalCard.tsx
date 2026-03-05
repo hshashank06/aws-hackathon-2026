@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { MapPin, Star, DollarSign, Shield, ChevronRight, Award, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, Star, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { Hospital } from "../data/mockData";
 import ReactMarkdown from "react-markdown";
 
@@ -21,10 +21,6 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
     setIsHovered(false);
   };
 
-  const averageRating = hospital.reviews.length > 0
-    ? hospital.reviews.reduce((acc, r) => acc + r.rating, 0) / hospital.reviews.length
-    : hospital.rating;
-
   // Use insuranceCoveragePercent from Lambda if available, otherwise calculate from reviews
   const insuranceCoveragePercent = hospital.insuranceCoveragePercent !== undefined
     ? hospital.insuranceCoveragePercent
@@ -42,24 +38,39 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
     bronze: "bg-orange-100 text-orange-700 border-orange-300",
   };
 
-  // Truncate description to first 4 sentences
+  // Truncate description to first 2-3 paragraphs or 4 sentences
   const truncateDescription = (text: string) => {
     if (!text) return "";
     
-    // Split by sentence endings (., !, ?)
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const cleanText = text.trim();
+    if (!cleanText) return "";
     
-    if (sentences.length <= 4) {
-      return text;
+    // For Markdown content, split by double newlines (paragraphs)
+    const paragraphs = cleanText.split(/\n\n+/).filter(p => p.trim());
+    
+    // If we have multiple paragraphs, take first 2-3 paragraphs
+    if (paragraphs.length > 3) {
+      return paragraphs.slice(0, 2).join("\n\n");
     }
     
-    const firstFour = sentences.slice(0, 4).join(" ");
-    return firstFour;
+    // If we have 2-3 paragraphs, return them all
+    if (paragraphs.length >= 2) {
+      return cleanText;
+    }
+    
+    // Otherwise, split by sentences (for single paragraph content)
+    const sentences = cleanText.match(/[^.!?]+[.!?]+/g);
+    
+    if (!sentences || sentences.length <= 4) {
+      return cleanText;
+    }
+    
+    return sentences.slice(0, 4).join(" ");
   };
 
   const fullDescription = hospital.description || "";
   const truncatedDescription = truncateDescription(fullDescription);
-  const hasMoreContent = fullDescription.length > truncatedDescription.length;
+  const hasMoreContent = fullDescription.trim().length > truncatedDescription.length;
 
   return (
     <motion.div
@@ -118,33 +129,34 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
         </Link>
 
         {/* Description with Read More */}
-        <div className="text-sm text-gray-600 mb-4">
-          <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>
-              {showFullDescription ? fullDescription : truncatedDescription}
-              {hasMoreContent && !showFullDescription && "..."}
-            </ReactMarkdown>
+        {fullDescription && fullDescription.trim() && (
+          <div className="text-sm text-gray-600 mb-4">
+            <div className="prose prose-sm max-w-none">
+              <ReactMarkdown>
+                {showFullDescription ? fullDescription : (truncatedDescription + (hasMoreContent ? "..." : ""))}
+              </ReactMarkdown>
+            </div>
+            {hasMoreContent && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowFullDescription(!showFullDescription);
+                }}
+                className="text-blue-600 hover:text-blue-700 font-medium mt-1 flex items-center gap-1 text-xs"
+              >
+                {showFullDescription ? (
+                  <>
+                    Show less <ChevronUp className="w-3 h-3" />
+                  </>
+                ) : (
+                  <>
+                    Read more <ChevronDown className="w-3 h-3" />
+                  </>
+                )}
+              </button>
+            )}
           </div>
-          {hasMoreContent && (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                setShowFullDescription(!showFullDescription);
-              }}
-              className="text-blue-600 hover:text-blue-700 font-medium mt-1 flex items-center gap-1 text-xs"
-            >
-              {showFullDescription ? (
-                <>
-                  Show less <ChevronUp className="w-3 h-3" />
-                </>
-              ) : (
-                <>
-                  Read more <ChevronDown className="w-3 h-3" />
-                </>
-              )}
-            </button>
-          )}
-        </div>
+        )}
 
         <Link to={`/hospital/${hospital.id}`} className="block">
           {/* Key Stats */}

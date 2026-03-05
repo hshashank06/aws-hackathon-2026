@@ -114,7 +114,9 @@ export function HospitalDetail() {
               className="bg-white rounded-lg border border-gray-200 p-6"
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">About</h2>
-              <p className="text-gray-700 mb-4">{hospital.description}</p>
+              <div className="prose max-w-none text-gray-700 mb-4">
+                <ReactMarkdown>{hospital.description}</ReactMarkdown>
+              </div>
 
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="bg-blue-50 rounded-lg p-4">
@@ -224,7 +226,9 @@ export function HospitalDetail() {
                       <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
                     </div>
                     <p className="font-medium text-gray-900 mb-2">{review.treatment}</p>
-                    <p className="text-gray-700 mb-3">{review.comment}</p>
+                    <div className="text-gray-700 mb-3 prose prose-sm max-w-none">
+                      <ReactMarkdown>{review.comment}</ReactMarkdown>
+                    </div>
                     <div className="flex gap-4 text-sm">
                       <div className="bg-gray-50 px-3 py-2 rounded">
                         <span className="text-gray-600">Total Cost: </span>
