@@ -1,0 +1,11 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"query\": \"I'm looking for good cardiology doctors and hospitals\", \"customerId\": \"test-customer-123\"}",
+  "requestContext": {
+    "requestId": "test-request-001"
+  }
+}

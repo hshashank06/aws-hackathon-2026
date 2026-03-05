@@ -1,0 +1,13 @@
+{
+  "asyncSearch": true,
+  "searchId": "search_1772688462_test123",
+  "query": "I'm looking for good cardiology doctors and hospitals",
+  "customerId": "test-customer-123",
+  "userContext": {
+    "insuranceId": "ins_001",
+    "location": {
+      "latitude": 17.4156,
+      "longitude": 78.4487
+    }
+  }
+}

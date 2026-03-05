@@ -1,0 +1,11 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"query\": \"Best orthopedics hospitals near me\", \"customerId\": \"customer-456\", \"userContext\": {\"insuranceId\": \"ins_001\"}}",
+  "requestContext": {
+    "requestId": "test-request-002"
+  }
+}

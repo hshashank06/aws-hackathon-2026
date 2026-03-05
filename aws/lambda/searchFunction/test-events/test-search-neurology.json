@@ -1,0 +1,11 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"query\": \"Neurology specialists for brain surgery\"}",
+  "requestContext": {
+    "requestId": "test-request-003"
+  }
+}

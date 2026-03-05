@@ -140,7 +140,7 @@ export function useProgressiveSearch(query: string) {
 
 // Main component
 export function ProgressiveSearchResults({ query }: { query: string }) {
-  const { status, progress, aiSummary, hospitals, error, stage } = useProgressiveSearch(query);
+  const { status, progress, aiSummary, hospitals, error } = useProgressiveSearch(query);
 
   if (status === 'idle') {
     return null;
@@ -165,7 +165,8 @@ export function ProgressiveSearchResults({ query }: { query: string }) {
         <div className="sticky top-0 z-10 bg-white pb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
-              {progress < 30 && 'Analyzing your query...'}
+              {status === 'searching' && progress === 0 && 'Starting search...'}
+              {progress > 0 && progress < 30 && 'Analyzing your query...'}
               {progress >= 30 && progress < 60 && 'Fetching hospital data...'}
               {progress >= 60 && 'Loading detailed information...'}
             </span>
@@ -177,6 +178,15 @@ export function ProgressiveSearchResults({ query }: { query: string }) {
               style={{ width: `${progress}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Initial loading state */}
+      {status === 'searching' && hospitals.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-gray-600">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
+          <p className="text-lg font-medium">Searching for hospitals...</p>
+          <p className="text-sm text-gray-500 mt-2">This may take 30-40 seconds</p>
         </div>
       )}
 

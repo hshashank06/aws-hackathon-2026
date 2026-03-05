@@ -1,0 +1,13 @@
+{
+  "httpMethod": "GET",
+  "path": "/search/search_1772688462_abc12345",
+  "pathParameters": {
+    "searchId": "search_1772688462_abc12345"
+  },
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "requestContext": {
+    "requestId": "test-request-004"
+  }
+}
