@@ -1,29 +1,14 @@
 version: 1
 applications:
-  - appRoot: .
+  - appRoot: app
     backend:
       phases:
         build:
           commands:
-            - echo "=== DEBUG INFO ==="
-            - pwd
-            - ls -la
-            - echo "Looking for package.json:"
-            - find . -name "package.json" -type f
-            - echo "Current directory contents:"
-            - ls -la .
-            - echo "=== END DEBUG ==="
             - npm ci --cache .npm --prefer-offline
             - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
     frontend:
       phases:
-        preBuild:
-          commands:
-            - echo "=== FRONTEND DEBUG ==="
-            - pwd
-            - ls -la
-            - echo "=== END FRONTEND DEBUG ==="
-            - npm ci --cache .npm --prefer-offline
         build:
           commands:
             - npm run build
