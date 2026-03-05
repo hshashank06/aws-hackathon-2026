@@ -59,7 +59,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "AQNFMZGOCZ")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "OAN0VGZQU5")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
@@ -92,6 +92,26 @@ class DecimalEncoder(json.JSONEncoder):
         if isinstance(obj, Decimal):
             return int(obj) if obj % 1 == 0 else float(obj)
         return super().default(obj)
+
+
+def convert_floats_to_decimal(obj: Any) -> Any:
+    """
+    Recursively convert all float values to Decimal for DynamoDB compatibility.
+    
+    Args:
+        obj: Object to convert (dict, list, or primitive)
+    
+    Returns:
+        Object with all floats converted to Decimal
+    """
+    if isinstance(obj, dict):
+        return {k: convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    elif isinstance(obj, float):
+        return Decimal(str(obj))
+    else:
+        return obj
 
 
 def _response(status_code: int, body: Any) -> dict:
@@ -732,11 +752,11 @@ def save_search_status(search_id: str, status: str, query: str = None, customer_
         if customer_id:
             item["customerId"] = customer_id
         if results:
-            item["results"] = results
+            item["results"] = convert_floats_to_decimal(results)
         if error:
             item["error"] = error
         if partial_results:
-            item["partialResults"] = partial_results
+            item["partialResults"] = convert_floats_to_decimal(partial_results)
         if progress is not None:
             item["progress"] = progress
         if status == "processing":

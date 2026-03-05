@@ -104,13 +104,22 @@ export function useProgressiveSearch(query: string) {
               }
             } else if (statusData.status === 'complete') {
               // Final results
+              console.log('Search complete! Full response:', statusData);
               window.clearInterval(pollInterval);
-              const results = statusData.results?.results;
+              
+              // The results structure from DynamoDB is: statusData.results (which contains the full response)
+              const fullResults = statusData.results;
+              console.log('Full results object:', fullResults);
+              
+              // Extract hospitals from results.results.hospitals
+              const hospitals = fullResults?.results?.hospitals || [];
+              console.log('Extracted hospitals:', hospitals.length);
+              
               setState({
                 status: 'complete',
                 progress: 100,
-                aiSummary: results?.aiSummary || statusData.results?.userIntent?.aiSummary,
-                hospitals: results?.hospitals || [],
+                aiSummary: fullResults?.userIntent?.aiSummary || 'Search completed successfully',
+                hospitals: hospitals,
               });
             } else if (statusData.status === 'error') {
               window.clearInterval(pollInterval);
