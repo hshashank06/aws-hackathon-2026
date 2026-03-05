@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { MapPin, Star, DollarSign, Shield, ChevronRight, Award, CheckCircle } from "lucide-react";
 import { Hospital } from "../data/mockData";

@@ -1,7 +1,13 @@
 import { useEffect } from "react"
 import { useAuth } from "react-oidc-context"
-import { RouterProvider } from "react-router"
-import { router } from "./routes"
+import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { Layout } from "./components/Layout"
+import { Home } from "./pages/Home"
+import { CreateReview } from "./pages/CreateReview"
+import { PastReviews } from "./pages/PastReviews"
+import { MyDocuments } from "./pages/MyDocuments"
+import { MyDetails } from "./pages/MyDetails"
+import { HospitalDetail } from "./pages/HospitalDetail"
 
 export default function App() {
   const auth = useAuth()
@@ -40,5 +46,19 @@ export default function App() {
     )
   }
 
-  return <RouterProvider router={router} />
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="create-review" element={<CreateReview />} />
+          <Route path="past-reviews" element={<PastReviews />} />
+          <Route path="my-reviews" element={<PastReviews />} />
+          <Route path="my-documents" element={<MyDocuments />} />
+          <Route path="my-details" element={<MyDetails />} />
+          <Route path="hospital/:id" element={<HospitalDetail />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
 }

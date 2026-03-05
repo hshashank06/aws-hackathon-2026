@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from "react-router"
+import { Outlet, Link, useLocation } from "react-router-dom"
 import {
   FileText,
   FilePlus,
@@ -7,11 +7,11 @@ import {
   Building2,
   LogOut
 } from "lucide-react"
-import { useAuth } from "../contexts/AuthContext"
+import { useAuth } from "react-oidc-context"
 
 export function Layout() {
   const location = useLocation()
-  const { user, signOut } = useAuth()
+  const auth = useAuth()
 
   const navItems = [
     { path: "/create-review", label: "Create a Review", icon: FilePlus },
@@ -61,32 +61,32 @@ export function Layout() {
 
         {/* User profile + sign-out */}
         <div className="p-4 border-t border-gray-200">
-          {user ? (
+          {auth.user ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3 min-w-0">
-                {user.picture ? (
+                {auth.user.profile?.picture ? (
                   <img
-                    src={user.picture}
-                    alt={user.name}
+                    src={auth.user.profile.picture}
+                    alt={auth.user.profile?.name || "User"}
                     className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
                   />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                     <span className="text-blue-600 text-sm font-semibold">
-                      {user.name.charAt(0).toUpperCase()}
+                      {(auth.user.profile?.name || "U").charAt(0).toUpperCase()}
                     </span>
                   </div>
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
-                    {user.name}
+                    {auth.user.profile?.name || "User"}
                   </p>
-                  <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  <p className="text-xs text-gray-500 truncate">{auth.user.profile?.email}</p>
                 </div>
               </div>
               {/* Sign-out always visible when user is present */}
               <button
-                onClick={() => signOut()}
+                onClick={() => auth.signoutRedirect()}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               >
                 <LogOut className="w-4 h-4" />

@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router";
+import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
