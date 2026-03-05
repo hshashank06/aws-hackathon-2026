@@ -48,27 +48,35 @@ export function useProgressiveSearch(query: string) {
     let searchId: string;
 
     const initiateSearch = async () => {
+      console.log('Initiating search with query:', query);
       setState({ status: 'searching', progress: 0, hospitals: [] });
 
       try {
         // Step 1: Initiate search
-        const response = await fetch('/search', {
+        console.log('Making POST request to /search');
+        const response = await fetch('https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query }),
         });
 
+        console.log('POST response status:', response.status);
+        
         if (!response.ok) {
           throw new Error('Failed to initiate search');
         }
 
         const data = await response.json();
+        console.log('POST response data:', data);
         searchId = data.searchId;
+        
+        console.log('Search initiated, starting polling for:', searchId);
 
         // Step 2: Start polling
         pollInterval = window.setInterval(async () => {
+          console.log('Polling for results:', searchId);
           try {
-            const statusResponse = await fetch(`/search/${searchId}`);
+            const statusResponse = await fetch(`https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/search/${searchId}`);
             
             if (!statusResponse.ok) {
               throw new Error('Failed to fetch search status');
@@ -119,6 +127,7 @@ export function useProgressiveSearch(query: string) {
           }
         }, 2000); // Poll every 2 seconds
       } catch (error) {
+        console.error('Search initiation failed:', error);
         setState({
           status: 'error',
           progress: 0,
