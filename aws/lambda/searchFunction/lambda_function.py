@@ -59,20 +59,21 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "FXGJQUGRJQ")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "AQNFMZGOCZ")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
     "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com"
 )
-DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-central-1")
+DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 SEARCH_RESULTS_TABLE = os.environ.get("SEARCH_RESULTS_TABLE", "SearchResults")
 LAMBDA_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "searchFunction")
+LAMBDA_REGION = os.environ.get("AWS_REGION", "us-east-1")  # Lambda's own region
 
 # Initialize AWS clients
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=BEDROCK_REGION)
 dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
-lambda_client = boto3.client("lambda", region_name=DYNAMODB_REGION)
+lambda_client = boto3.client("lambda", region_name=LAMBDA_REGION)  # Use Lambda's region, not DynamoDB's
 search_results_table = dynamodb.Table(SEARCH_RESULTS_TABLE)
 
 # Constants
@@ -320,15 +321,34 @@ def _invoke_bedrock_agent_once(query: str, session_id: str, start_time: float, a
             prefix = full_response[:json_start].strip()
             logger.info("Stripped conversational prefix | Prefix='%s'", prefix[:100])
         
-        # Check if JSON is complete (ends with '}')
+        # Try to fix incomplete JSON by adding missing closing brackets
         json_str_stripped = json_str.strip()
         if not json_str_stripped.endswith('}'):
             logger.warning("JSON appears incomplete | Ends with: '%s'", json_str_stripped[-50:])
-            # Try to find the last complete JSON object
-            last_brace = json_str_stripped.rfind('}')
-            if last_brace > 0:
-                json_str = json_str_stripped[:last_brace + 1]
-                logger.info("Truncated to last complete brace | NewLength=%d", len(json_str))
+            
+            # Count opening and closing braces/brackets
+            open_braces = json_str_stripped.count('{')
+            close_braces = json_str_stripped.count('}')
+            open_brackets = json_str_stripped.count('[')
+            close_brackets = json_str_stripped.count(']')
+            
+            logger.info("Brace count | Open={%d} Close={%d} | Open=[%d] Close=[%d]", 
+                       open_braces, close_braces, open_brackets, close_brackets)
+            
+            # Try to complete the JSON by adding missing closures
+            fixed_json = json_str_stripped
+            
+            # Add missing closing brackets/braces
+            if close_brackets < open_brackets:
+                fixed_json += ']' * (open_brackets - close_brackets)
+                logger.info("Added %d closing brackets", open_brackets - close_brackets)
+            
+            if close_braces < open_braces:
+                fixed_json += '}' * (open_braces - close_braces)
+                logger.info("Added %d closing braces", open_braces - close_braces)
+            
+            json_str = fixed_json
+            logger.info("Attempted to fix incomplete JSON | NewLength=%d", len(json_str))
         
         llm_data = json.loads(json_str)
         logger.info(
@@ -341,6 +361,20 @@ def _invoke_bedrock_agent_once(query: str, session_id: str, start_time: float, a
     except json.JSONDecodeError as e:
         logger.error("Failed to parse LLM response as JSON | Error=%s | Response=%s", str(e), full_response[:500])
         logger.error("JSON string that failed to parse (last 500 chars): %s", json_str[-500:] if len(json_str) > 500 else json_str)
+        
+        # Last resort: try to salvage what we can
+        try:
+            # Try to find the last complete hospital entry
+            last_hospital_end = json_str.rfind('}]')
+            if last_hospital_end > 0:
+                salvaged_json = json_str[:last_hospital_end + 2] + '}'
+                logger.info("Attempting to salvage partial JSON | Length=%d", len(salvaged_json))
+                llm_data = json.loads(salvaged_json)
+                logger.warning("Successfully salvaged partial response | Hospitals=%d", len(llm_data.get("hospitals", [])))
+                return llm_data
+        except:
+            pass
+        
         raise ValueError(f"Invalid JSON response from Bedrock Agent: {str(e)}")
 
 
@@ -745,7 +779,7 @@ def get_search_status(search_id: str) -> dict:
         return None
 
 
-def invoke_async_search(search_id: str, query: str, customer_id: str, user_context: dict) -> None:
+def invoke_async_search(search_id: str, query: str, customer_id: str, user_context: dict, context=None) -> None:
     """
     Invoke Lambda function asynchronously to process search in background.
     
@@ -754,8 +788,14 @@ def invoke_async_search(search_id: str, query: str, customer_id: str, user_conte
         query: User's search query
         customer_id: Customer ID
         user_context: User context (insurance, location, etc.)
+        context: Lambda context (optional, to get function name)
     """
     try:
+        # Get function name from context or environment variable
+        function_name = LAMBDA_FUNCTION_NAME
+        if context and hasattr(context, 'function_name'):
+            function_name = context.function_name
+        
         payload = {
             "asyncSearch": True,
             "searchId": search_id,
@@ -764,8 +804,10 @@ def invoke_async_search(search_id: str, query: str, customer_id: str, user_conte
             "userContext": user_context,
         }
         
+        logger.info("Invoking async search | FunctionName=%s | SearchId=%s", function_name, search_id)
+        
         lambda_client.invoke(
-            FunctionName=LAMBDA_FUNCTION_NAME,
+            FunctionName=function_name,
             InvocationType="Event",  # Async invocation
             Payload=json.dumps(payload),
         )
@@ -916,7 +958,7 @@ def enrich_doctor_data(
     return enriched
 
 
-def search_hospitals(event: dict) -> dict:
+def search_hospitals(event: dict, context=None) -> dict:
     """
     Main search handler - orchestrates the entire search process.
     
@@ -947,10 +989,10 @@ def search_hospitals(event: dict) -> dict:
         return process_search_async(event)
     else:
         # Initial request mode - return immediately
-        return initiate_search_sync(event)
+        return initiate_search_sync(event, context)
 
 
-def initiate_search_sync(event: dict) -> dict:
+def initiate_search_sync(event: dict, context=None) -> dict:
     """
     Handle initial search request - return searchId immediately.
     
@@ -990,7 +1032,7 @@ def initiate_search_sync(event: dict) -> dict:
         save_search_status(search_id, "processing", query=query, customer_id=customer_id)
         
         # Invoke async processing
-        invoke_async_search(search_id, query, customer_id, user_context)
+        invoke_async_search(search_id, query, customer_id, user_context, context)
         
         # Return immediately
         response_body = {
@@ -1038,23 +1080,10 @@ def process_search_async(event: dict) -> None:
     
     start_time = time.time()
     
-    try:est body
-        body = _parse_body(event)
-        query = body.get("query", "").strip()
-        customer_id = body.get("customerId", "").strip()
-        user_context = body.get("userContext", {})
-        insurance_id = user_context.get("insuranceId")
-        
     try:
-        body = _parse_body(event)
-        query = body.get("query", "").strip()
-        customer_id = body.get("customerId", "").strip()
-        user_context = body.get("userContext", {})
-        insurance_id = user_context.get("insuranceId")
-        
         logger.info(
             "Request parsed | Query='%s' | CustomerId=%s | InsuranceId=%s",
-            query[:100],
+            query[:100] if query else "None",
             customer_id or "None",
             insurance_id or "None"
         )
@@ -1062,10 +1091,9 @@ def process_search_async(event: dict) -> None:
         # Validate required fields
         if not query:
             logger.warning("Missing required field: query")
-            return _error(400, "Missing required field: query")
+            save_search_status(search_id, "error", error="Missing required field: query")
+            return
         
-        # Step 1: Invoke Bedrock Agent
-        logger.info("STEP 1: Invoking Bedrock Agent")
         # Step 1: Invoke Bedrock Agent
         logger.info("STEP 1: Invoking Bedrock Agent")
         try:
@@ -1443,7 +1471,7 @@ def lambda_handler(event: dict, context: Any) -> dict:
     
     # Route to handlers
     if method == "POST" and path.endswith("/search"):
-        return search_hospitals(event)
+        return search_hospitals(event, context)
     
     elif method == "GET" and "/search/" in path:
         return get_search_results(event)

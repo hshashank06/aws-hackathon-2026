@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { Search, Sparkles } from "lucide-react";
-import { HospitalCard } from "../components/HospitalCard";
-import { DoctorCard } from "../components/DoctorCard";
-import { Hospital } from "../data/mockData";
 import { motion, AnimatePresence } from "motion/react";
-import { searchHospitalsAPI } from "../services/api";
-import { HospitalCardSkeleton, LoadingSpinner } from "../components/LoadingSkeleton";
 import { ProgressiveSearchResults } from "../components/ProgressiveSearchResults";
 
 export function Home() {
