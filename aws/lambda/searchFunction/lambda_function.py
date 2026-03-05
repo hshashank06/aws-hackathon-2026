@@ -65,9 +65,15 @@ API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
     "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com"
 )
+DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-central-1")
+SEARCH_RESULTS_TABLE = os.environ.get("SEARCH_RESULTS_TABLE", "SearchResults")
+LAMBDA_FUNCTION_NAME = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "searchFunction")
 
 # Initialize AWS clients
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=BEDROCK_REGION)
+dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
+lambda_client = boto3.client("lambda", region_name=DYNAMODB_REGION)
+search_results_table = dynamodb.Table(SEARCH_RESULTS_TABLE)
 
 # Constants
 MAX_WORKERS = 20  # For parallel API calls
@@ -122,19 +128,21 @@ def _parse_body(event: dict) -> dict:
 # Bedrock Agent Integration
 # ---------------------------------------------------------------------------
 
-def invoke_bedrock_agent(query: str, customer_id: str) -> dict:
+def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = 3) -> dict:
     """
     Invoke AWS Bedrock Agent for AI-powered hospital recommendations.
+    Includes retry logic with exponential backoff for timeout/throttling errors.
     
     Args:
         query: User's search query
         customer_id: Customer ID (used as sessionId for conversation memory)
+        max_retries: Maximum number of retry attempts (default: 3)
     
     Returns:
         dict: LLM response with aiSummary and hospitals array
     
     Raises:
-        Exception: If agent invocation fails or times out
+        Exception: If agent invocation fails after all retries
     """
     session_id = customer_id or f"session_{uuid.uuid4().hex[:12]}"
     
@@ -148,118 +156,192 @@ def invoke_bedrock_agent(query: str, customer_id: str) -> dict:
     
     start_time = time.time()
     
-    try:
-        response = bedrock_agent_runtime.invoke_agent(
-            agentId=BEDROCK_AGENT_ID,
-            agentAliasId=BEDROCK_AGENT_ALIAS_ID,
-            sessionId=session_id,
-            inputText=query,
-        )
-        
-        # Properly handle streaming response - collect ALL chunks
-        full_response = ""
-        chunk_count = 0
-        
-        # Process all events in the completion stream
-        # CRITICAL: Must iterate through ALL events to get complete response
-        completion_stream = response.get("completion", [])
-        
-        for event in completion_stream:
-            # Log event type for debugging
-            event_type = list(event.keys())[0] if event else "unknown"
-            logger.debug("Event received | Type=%s", event_type)
-            
-            if "chunk" in event:
-                chunk = event["chunk"]
-                if "bytes" in chunk:
-                    # Decode bytes and append to full response
-                    chunk_data = chunk["bytes"].decode("utf-8")
-                    full_response += chunk_data
-                    chunk_count += 1
-                    logger.debug("Chunk %d received | Length=%d | Content=%s", 
-                                chunk_count, len(chunk_data), chunk_data[:100])
-            
-            # Handle other event types that might contain data
-            elif "trace" in event:
-                logger.debug("Trace event received")
-            elif "returnControl" in event:
-                logger.debug("ReturnControl event received")
-            elif "internalServerException" in event:
-                logger.error("InternalServerException in stream")
-                raise Exception("Bedrock Agent internal server error")
-            elif "validationException" in event:
-                logger.error("ValidationException in stream")
-                raise Exception("Bedrock Agent validation error")
-        
-        # Ensure we received some response
-        if not full_response:
-            logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
-            raise Exception("Empty response from Bedrock Agent")
-        
-        elapsed = time.time() - start_time
-        logger.info(
-            "Bedrock Agent response received | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
-            chunk_count,
-            len(full_response),
-            elapsed
-        )
-        
-        # Log full response for debugging (truncated to 3000 chars)
-        logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
-        if len(full_response) > 3000:
-            logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
-        
-        # Parse JSON response - extract JSON from conversational text
+    # Retry loop with exponential backoff
+    for attempt in range(max_retries):
         try:
-            # Find the first '{' and extract JSON from there
-            json_start = full_response.find('{')
-            if json_start == -1:
-                logger.error("No JSON object found in response | Response=%s", full_response[:500])
-                raise ValueError("No JSON object found in Bedrock Agent response")
+            return _invoke_bedrock_agent_once(query, session_id, start_time, attempt + 1)
+        
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_msg = e.response["Error"]["Message"]
             
-            # Extract from first '{' to end
-            json_str = full_response[json_start:]
+            # Check if error is retryable
+            is_retryable = error_code in [
+                "dependencyFailedException",
+                "ThrottlingException",
+                "ServiceUnavailableException",
+                "InternalServerException",
+                "ModelTimeoutException"
+            ]
             
-            # Log if there was text before JSON
-            if json_start > 0:
-                prefix = full_response[:json_start].strip()
-                logger.info("Stripped conversational prefix | Prefix='%s'", prefix[:100])
-            
-            # Check if JSON is complete (ends with '}')
-            json_str_stripped = json_str.strip()
-            if not json_str_stripped.endswith('}'):
-                logger.warning("JSON appears incomplete | Ends with: '%s'", json_str_stripped[-50:])
-                # Try to find the last complete JSON object
-                last_brace = json_str_stripped.rfind('}')
-                if last_brace > 0:
-                    json_str = json_str_stripped[:last_brace + 1]
-                    logger.info("Truncated to last complete brace | NewLength=%d", len(json_str))
-            
-            llm_data = json.loads(json_str)
-            logger.info(
-                "LLM response parsed | Hospitals=%d | HasSummary=%s",
-                len(llm_data.get("hospitals", [])),
-                "aiSummary" in llm_data
+            if is_retryable and attempt < max_retries - 1:
+                # Calculate backoff delay: 2^attempt seconds (1s, 2s, 4s)
+                backoff_delay = 2 ** attempt
+                logger.warning(
+                    "Bedrock Agent error (retryable) | Attempt=%d/%d | ErrorCode=%s | RetryIn=%ds",
+                    attempt + 1,
+                    max_retries,
+                    error_code,
+                    backoff_delay
+                )
+                time.sleep(backoff_delay)
+                continue  # Retry
+            else:
+                # Non-retryable error or max retries reached
+                logger.error(
+                    "Bedrock Agent invocation failed | Attempt=%d/%d | ErrorCode=%s | ErrorMsg=%s",
+                    attempt + 1,
+                    max_retries,
+                    error_code,
+                    error_msg
+                )
+                raise Exception(f"Bedrock Agent error: {error_code} - {error_msg}")
+        
+        except Exception as e:
+            # Non-ClientError exceptions (parsing errors, etc.)
+            if attempt < max_retries - 1:
+                backoff_delay = 2 ** attempt
+                logger.warning(
+                    "Bedrock Agent error (unexpected) | Attempt=%d/%d | Error=%s | RetryIn=%ds",
+                    attempt + 1,
+                    max_retries,
+                    str(e),
+                    backoff_delay
+                )
+                time.sleep(backoff_delay)
+                continue  # Retry
+            else:
+                logger.exception("Bedrock Agent invocation failed after all retries")
+                raise
+    
+    # Should never reach here, but just in case
+    raise Exception("Bedrock Agent invocation failed after all retries")
+
+
+def _invoke_bedrock_agent_once(query: str, session_id: str, start_time: float, attempt: int) -> dict:
+    """
+    Single invocation attempt of Bedrock Agent (internal helper).
+    
+    Args:
+        query: User's search query
+        session_id: Session ID for conversation memory
+        start_time: Request start time for logging
+        attempt: Current attempt number
+    
+    Returns:
+        dict: LLM response with aiSummary and hospitals array
+    
+    Raises:
+        ClientError: If Bedrock API call fails
+        Exception: If response parsing fails
+    """
+    logger.debug("Bedrock Agent invocation attempt | Attempt=%d | SessionId=%s", attempt, session_id)
+    
+    response = bedrock_agent_runtime.invoke_agent(
+        agentId=BEDROCK_AGENT_ID,
+        agentAliasId=BEDROCK_AGENT_ALIAS_ID,
+        sessionId=session_id,
+        inputText=query,
+    )
+    
+    # Properly handle streaming response - collect ALL chunks
+    full_response = ""
+    chunk_count = 0
+    
+    # Process all events in the completion stream
+    # CRITICAL: Must iterate through ALL events to get complete response
+    completion_stream = response.get("completion", [])
+    
+    for event in completion_stream:
+        # Log event type for debugging
+        event_type = list(event.keys())[0] if event else "unknown"
+        logger.debug("Event received | Type=%s", event_type)
+        
+        if "chunk" in event:
+            chunk = event["chunk"]
+            if "bytes" in chunk:
+                # Decode bytes and append to full response
+                chunk_data = chunk["bytes"].decode("utf-8")
+                full_response += chunk_data
+                chunk_count += 1
+                logger.debug("Chunk %d received | Length=%d | Content=%s", 
+                            chunk_count, len(chunk_data), chunk_data[:100])
+        
+        # Handle other event types that might contain data
+        elif "trace" in event:
+            logger.debug("Trace event received")
+        elif "returnControl" in event:
+            logger.debug("ReturnControl event received")
+        elif "internalServerException" in event:
+            logger.error("InternalServerException in stream")
+            raise ClientError(
+                {"Error": {"Code": "InternalServerException", "Message": "Bedrock Agent internal server error"}},
+                "invoke_agent"
             )
-            return llm_data
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response as JSON | Error=%s | Response=%s", str(e), full_response[:500])
-            logger.error("JSON string that failed to parse (last 500 chars): %s", json_str[-500:] if len(json_str) > 500 else json_str)
-            raise ValueError(f"Invalid JSON response from Bedrock Agent: {str(e)}")
+        elif "validationException" in event:
+            logger.error("ValidationException in stream")
+            raise ClientError(
+                {"Error": {"Code": "ValidationException", "Message": "Bedrock Agent validation error"}},
+                "invoke_agent"
+            )
     
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_msg = e.response["Error"]["Message"]
-        logger.error(
-            "Bedrock Agent invocation failed | ErrorCode=%s | ErrorMsg=%s",
-            error_code,
-            error_msg
+    # Ensure we received some response
+    if not full_response:
+        logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
+        raise Exception("Empty response from Bedrock Agent")
+    
+    elapsed = time.time() - start_time
+    logger.info(
+        "Bedrock Agent response received | Attempt=%d | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
+        attempt,
+        chunk_count,
+        len(full_response),
+        elapsed
+    )
+    
+    # Log full response for debugging (truncated to 3000 chars)
+    logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
+    if len(full_response) > 3000:
+        logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
+    
+    # Parse JSON response - extract JSON from conversational text
+    try:
+        # Find the first '{' and extract JSON from there
+        json_start = full_response.find('{')
+        if json_start == -1:
+            logger.error("No JSON object found in response | Response=%s", full_response[:500])
+            raise ValueError("No JSON object found in Bedrock Agent response")
+        
+        # Extract from first '{' to end
+        json_str = full_response[json_start:]
+        
+        # Log if there was text before JSON
+        if json_start > 0:
+            prefix = full_response[:json_start].strip()
+            logger.info("Stripped conversational prefix | Prefix='%s'", prefix[:100])
+        
+        # Check if JSON is complete (ends with '}')
+        json_str_stripped = json_str.strip()
+        if not json_str_stripped.endswith('}'):
+            logger.warning("JSON appears incomplete | Ends with: '%s'", json_str_stripped[-50:])
+            # Try to find the last complete JSON object
+            last_brace = json_str_stripped.rfind('}')
+            if last_brace > 0:
+                json_str = json_str_stripped[:last_brace + 1]
+                logger.info("Truncated to last complete brace | NewLength=%d", len(json_str))
+        
+        llm_data = json.loads(json_str)
+        logger.info(
+            "LLM response parsed | Attempt=%d | Hospitals=%d | HasSummary=%s",
+            attempt,
+            len(llm_data.get("hospitals", [])),
+            "aiSummary" in llm_data
         )
-        raise Exception(f"Bedrock Agent error: {error_code} - {error_msg}")
-    
-    except Exception as e:
-        logger.exception("Unexpected error invoking Bedrock Agent")
-        raise
+        return llm_data
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse LLM response as JSON | Error=%s | Response=%s", str(e), full_response[:500])
+        logger.error("JSON string that failed to parse (last 500 chars): %s", json_str[-500:] if len(json_str) > 500 else json_str)
+        raise ValueError(f"Invalid JSON response from Bedrock Agent: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +667,118 @@ def get_all_hospital_doctors(hospital_data: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
+# DynamoDB Operations
+# ---------------------------------------------------------------------------
+
+def save_search_status(search_id: str, status: str, query: str = None, customer_id: str = None, 
+                       results: dict = None, error: str = None, partial_results: dict = None,
+                       progress: int = None) -> None:
+    """
+    Save search status to DynamoDB.
+    
+    Args:
+        search_id: Unique search identifier
+        status: "processing" | "complete" | "error"
+        query: User's search query (optional)
+        customer_id: Customer ID (optional)
+        results: Search results (optional, for complete status)
+        error: Error message (optional, for error status)
+        partial_results: Partial results for progressive loading (optional)
+        progress: Progress percentage 0-100 (optional)
+    """
+    try:
+        item = {
+            "searchId": search_id,
+            "status": status,
+            "updatedAt": int(time.time()),
+        }
+        
+        if query:
+            item["query"] = query
+        if customer_id:
+            item["customerId"] = customer_id
+        if results:
+            item["results"] = results
+        if error:
+            item["error"] = error
+        if partial_results:
+            item["partialResults"] = partial_results
+        if progress is not None:
+            item["progress"] = progress
+        if status == "processing":
+            item["createdAt"] = int(time.time())
+            # Set TTL to 1 hour from now
+            item["ttl"] = int(time.time()) + 3600
+        
+        search_results_table.put_item(Item=item)
+        logger.info("Search status saved | SearchId=%s | Status=%s | Progress=%s", 
+                   search_id, status, progress if progress else "N/A")
+    
+    except Exception as e:
+        logger.error("Failed to save search status | SearchId=%s | Error=%s", search_id, str(e))
+        # Don't raise - this is not critical
+
+
+def get_search_status(search_id: str) -> dict:
+    """
+    Get search status from DynamoDB.
+    
+    Args:
+        search_id: Unique search identifier
+    
+    Returns:
+        dict: Search record or None if not found
+    """
+    try:
+        response = search_results_table.get_item(Key={"searchId": search_id})
+        item = response.get("Item")
+        
+        if item:
+            logger.info("Search status retrieved | SearchId=%s | Status=%s", search_id, item.get("status"))
+        else:
+            logger.warning("Search not found | SearchId=%s", search_id)
+        
+        return item
+    
+    except Exception as e:
+        logger.error("Failed to get search status | SearchId=%s | Error=%s", search_id, str(e))
+        return None
+
+
+def invoke_async_search(search_id: str, query: str, customer_id: str, user_context: dict) -> None:
+    """
+    Invoke Lambda function asynchronously to process search in background.
+    
+    Args:
+        search_id: Unique search identifier
+        query: User's search query
+        customer_id: Customer ID
+        user_context: User context (insurance, location, etc.)
+    """
+    try:
+        payload = {
+            "asyncSearch": True,
+            "searchId": search_id,
+            "query": query,
+            "customerId": customer_id,
+            "userContext": user_context,
+        }
+        
+        lambda_client.invoke(
+            FunctionName=LAMBDA_FUNCTION_NAME,
+            InvocationType="Event",  # Async invocation
+            Payload=json.dumps(payload),
+        )
+        
+        logger.info("Async search invoked | SearchId=%s", search_id)
+    
+    except Exception as e:
+        logger.error("Failed to invoke async search | SearchId=%s | Error=%s", search_id, str(e))
+        # Update status to error
+        save_search_status(search_id, "error", error=f"Failed to start background processing: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
 # Main Search Orchestration
 # ---------------------------------------------------------------------------
 
@@ -726,28 +920,132 @@ def search_hospitals(event: dict) -> dict:
     """
     Main search handler - orchestrates the entire search process.
     
+    Two modes:
+    1. Sync mode (initial request): Returns searchId immediately, processes in background
+    2. Async mode (background): Processes search and stores results in DynamoDB
+    
     Process:
     1. Parse request and validate
-    2. Invoke Bedrock Agent for AI recommendations
-    3. Fetch detailed data from API Gateway (parallel)
-    4. Calculate statistics from reviews
-    5. Build comprehensive response
+    2. Generate searchId and return immediately (sync mode)
+    3. Invoke self asynchronously to process search (async mode)
+    4. Invoke Bedrock Agent for AI recommendations
+    5. Fetch detailed data from API Gateway (parallel)
+    6. Calculate statistics from reviews
+    7. Store results in DynamoDB
+    
+    Args:
+        event: API Gateway event or async invocation payload
+    
+    Returns:
+        dict: API Gateway response (sync) or None (async)
+    """
+    # Check if this is an async background invocation
+    is_async = event.get("asyncSearch", False)
+    
+    if is_async:
+        # Background processing mode
+        return process_search_async(event)
+    else:
+        # Initial request mode - return immediately
+        return initiate_search_sync(event)
+
+
+def initiate_search_sync(event: dict) -> dict:
+    """
+    Handle initial search request - return searchId immediately.
     
     Args:
         event: API Gateway event
     
     Returns:
-        dict: API Gateway response
+        dict: API Gateway response with searchId and status
     """
     request_id = event.get("requestContext", {}).get("requestId", uuid.uuid4().hex[:12])
     logger.info("=" * 80)
-    logger.info("SEARCH REQUEST START | RequestId=%s", request_id)
+    logger.info("SEARCH REQUEST (SYNC) | RequestId=%s", request_id)
+    logger.info("=" * 80)
+    
+    try:
+        # Parse request
+        body = _parse_body(event)
+        query = body.get("query", "").strip()
+        customer_id = body.get("customerId", "").strip()
+        user_context = body.get("userContext", {})
+        
+        logger.info(
+            "Request parsed | Query='%s' | CustomerId=%s",
+            query[:100],
+            customer_id or "None"
+        )
+        
+        # Validate required fields
+        if not query:
+            logger.warning("Missing required field: query")
+            return _error(400, "Missing required field: query")
+        
+        # Generate searchId
+        search_id = f"search_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        
+        # Save initial status to DynamoDB
+        save_search_status(search_id, "processing", query=query, customer_id=customer_id)
+        
+        # Invoke async processing
+        invoke_async_search(search_id, query, customer_id, user_context)
+        
+        # Return immediately
+        response_body = {
+            "success": True,
+            "searchId": search_id,
+            "status": "processing",
+            "message": "Search is being processed. Use the searchId to check status.",
+            "estimatedTime": "30-40 seconds",
+        }
+        
+        logger.info("Search initiated | SearchId=%s", search_id)
+        logger.info("=" * 80)
+        
+        return _ok(response_body, status_code=202)  # 202 Accepted
+    
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in request body")
+        return _error(400, "Invalid JSON in request body")
+    
+    except Exception as e:
+        logger.exception("Failed to initiate search | RequestId=%s", request_id)
+        return _error(
+            500,
+            "An unexpected error occurred. Please try again.",
+            {"code": "INTERNAL_ERROR"}
+        )
+
+
+def process_search_async(event: dict) -> None:
+    """
+    Process search in background (async mode).
+    
+    Args:
+        event: Async invocation payload with searchId, query, etc.
+    """
+    search_id = event.get("searchId")
+    query = event.get("query")
+    customer_id = event.get("customerId")
+    user_context = event.get("userContext", {})
+    insurance_id = user_context.get("insuranceId")
+    
+    logger.info("=" * 80)
+    logger.info("SEARCH REQUEST (ASYNC) | SearchId=%s", search_id)
     logger.info("=" * 80)
     
     start_time = time.time()
     
+    try:est body
+        body = _parse_body(event)
+        query = body.get("query", "").strip()
+        customer_id = body.get("customerId", "").strip()
+        user_context = body.get("userContext", {})
+        insurance_id = user_context.get("insuranceId")
+        
     try:
-        # Parse request body
         body = _parse_body(event)
         query = body.get("query", "").strip()
         customer_id = body.get("customerId", "").strip()
@@ -768,29 +1066,42 @@ def search_hospitals(event: dict) -> dict:
         
         # Step 1: Invoke Bedrock Agent
         logger.info("STEP 1: Invoking Bedrock Agent")
+        # Step 1: Invoke Bedrock Agent
+        logger.info("STEP 1: Invoking Bedrock Agent")
         try:
             llm_response = invoke_bedrock_agent(query, customer_id)
         except Exception as e:
             logger.error("Bedrock Agent invocation failed | Error=%s", str(e))
-            return _error(
-                503,
-                "Search service temporarily unavailable. Please try again.",
-                {"code": "AGENT_ERROR", "suggestion": "Try simplifying your search query"}
+            save_search_status(
+                search_id,
+                "error",
+                error="Search service temporarily unavailable. Please try again."
             )
+            return  # Exit async function
         
         # Validate LLM response
         if not llm_response.get("hospitals"):
             logger.warning("LLM returned no hospitals")
-            return _error(
-                404,
-                "No hospitals found matching your criteria. Try different keywords.",
-                {"code": "NO_RESULTS"}
+            save_search_status(
+                search_id,
+                "error",
+                error="No hospitals found matching your criteria. Try different keywords."
             )
+            return  # Exit async function
         
         ai_summary = llm_response.get("aiSummary", "")
         hospitals_llm = llm_response.get("hospitals", [])
         
         logger.info("LLM response validated | HospitalCount=%d", len(hospitals_llm))
+        
+        # Save partial results #1: AI Summary + Hospital IDs (Progress: 30%)
+        partial_results_1 = {
+            "aiSummary": ai_summary,
+            "hospitalCount": len(hospitals_llm),
+            "hospitalIds": [h["hospitalId"] for h in hospitals_llm],
+            "stage": "llm_complete"
+        }
+        save_search_status(search_id, "processing", partial_results=partial_results_1, progress=30)
 
 
         # Step 2: Extract IDs from LLM response
@@ -892,6 +1203,35 @@ def search_hospitals(event: dict) -> dict:
             len(hospital_reviews),
             len(doctor_reviews)
         )
+        
+        # Save partial results #2: Basic hospital info (Progress: 60%)
+        partial_hospitals = []
+        for hospital_llm in hospitals_llm:
+            hospital_id = hospital_llm["hospitalId"]
+            hospital_data = hospitals_data.get(hospital_id)
+            if hospital_data:
+                # Parse location
+                location_str = hospital_data.get("location", "0,0")
+                try:
+                    lat, lon = map(float, location_str.split(","))
+                except:
+                    lat, lon = 0.0, 0.0
+                
+                partial_hospitals.append({
+                    "hospitalId": hospital_id,
+                    "hospitalName": hospital_data.get("hospitalName", ""),
+                    "address": hospital_data.get("address", ""),
+                    "phoneNumber": hospital_data.get("phoneNumber", ""),
+                    "location": {"latitude": lat, "longitude": lon},
+                    "aiReview": hospital_llm.get("hospitalAIReview", ""),
+                })
+        
+        partial_results_2 = {
+            "aiSummary": ai_summary,
+            "hospitals": partial_hospitals,
+            "stage": "basic_data_complete"
+        }
+        save_search_status(search_id, "processing", partial_results=partial_results_2, progress=60)
 
 
         # Step 4: Build enriched response
@@ -969,7 +1309,7 @@ def search_hospitals(event: dict) -> dict:
                 "hospitals": enriched_hospitals,
             },
             "metadata": {
-                "searchId": f"search_{int(time.time())}_{request_id}",
+                "searchId": search_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "aiModel": "bedrock-agent",
                 "databaseVersion": "v1.0.0",
@@ -978,33 +1318,90 @@ def search_hospitals(event: dict) -> dict:
             },
         }
         
+        # Save results to DynamoDB
+        save_search_status(search_id, "complete", results=response_body)
+        
         logger.info("=" * 80)
         logger.info(
-            "SEARCH REQUEST COMPLETE | RequestId=%s | Duration=%.2fs | Hospitals=%d",
-            request_id,
+            "SEARCH REQUEST COMPLETE (ASYNC) | SearchId=%s | Duration=%.2fs | Hospitals=%d",
+            search_id,
             elapsed,
             len(enriched_hospitals)
         )
         logger.info("=" * 80)
-        
-        return _ok(response_body)
-    
-    except json.JSONDecodeError:
-        logger.error("Invalid JSON in request body")
-        return _error(400, "Invalid JSON in request body")
     
     except Exception as e:
         elapsed = time.time() - start_time
         logger.exception(
-            "Search request failed | RequestId=%s | Duration=%.2fs",
-            request_id,
+            "Search request failed (async) | SearchId=%s | Duration=%.2fs",
+            search_id,
             elapsed
         )
-        return _error(
-            500,
-            "An unexpected error occurred. Please try again.",
-            {"code": "INTERNAL_ERROR"}
+        save_search_status(
+            search_id,
+            "error",
+            error="An unexpected error occurred during search processing."
         )
+
+
+def get_search_results(event: dict) -> dict:
+    """
+    Get search results by searchId.
+    
+    Args:
+        event: API Gateway event with searchId in path
+    
+    Returns:
+        dict: API Gateway response with search status and results
+    """
+    try:
+        # Extract searchId from path parameters
+        search_id = event.get("pathParameters", {}).get("searchId")
+        
+        if not search_id:
+            return _error(400, "Missing searchId in path")
+        
+        logger.info("Getting search results | SearchId=%s", search_id)
+        
+        # Get from DynamoDB
+        item = get_search_status(search_id)
+        
+        if not item:
+            return _error(404, "Search not found", {"searchId": search_id})
+        
+        status = item.get("status")
+        
+        if status == "processing":
+            response_data = {
+                "success": True,
+                "searchId": search_id,
+                "status": "processing",
+                "progress": item.get("progress", 0),
+                "message": "Search is still being processed. Please check again in a few seconds.",
+            }
+            
+            # Include partial results if available
+            partial_results = item.get("partialResults")
+            if partial_results:
+                response_data["partialResults"] = partial_results
+            
+            return _ok(response_data)
+        
+        elif status == "complete":
+            # Return the full results
+            results = item.get("results", {})
+            return _ok(results)
+        
+        elif status == "error":
+            error_msg = item.get("error", "An error occurred during search processing")
+            return _error(500, error_msg, {"searchId": search_id})
+        
+        else:
+            return _error(500, "Unknown search status", {"searchId": search_id, "status": status})
+    
+    except Exception as e:
+        logger.exception("Failed to get search results")
+        return _error(500, "Failed to retrieve search results")
 
 
 # ---------------------------------------------------------------------------
@@ -1016,15 +1413,22 @@ def lambda_handler(event: dict, context: Any) -> dict:
     Main Lambda entry point for API Gateway integration.
     
     Routes:
-      POST /search  → search_hospitals
+      POST /search           → initiate_search_sync (returns searchId immediately)
+      GET  /search/{searchId} → get_search_results (poll for results)
+      Async invocation       → process_search_async (background processing)
     
     Args:
-        event: API Gateway event
+        event: API Gateway event or async invocation payload
         context: Lambda context
     
     Returns:
-        dict: API Gateway response
+        dict: API Gateway response or None (async)
     """
+    # Check if this is an async invocation
+    if event.get("asyncSearch"):
+        search_hospitals(event)
+        return None  # No response for async invocations
+    
     method = (
         event.get("httpMethod") 
         or event.get("requestContext", {}).get("http", {}).get("method", "")
@@ -1037,9 +1441,12 @@ def lambda_handler(event: dict, context: Any) -> dict:
     
     logger.info("Lambda invoked | Method=%s | Path=%s", method, path)
     
-    # Route to search handler
+    # Route to handlers
     if method == "POST" and path.endswith("/search"):
         return search_hospitals(event)
+    
+    elif method == "GET" and "/search/" in path:
+        return get_search_results(event)
     
     # Method not allowed
     logger.warning("Method not allowed | Method=%s | Path=%s", method, path)
