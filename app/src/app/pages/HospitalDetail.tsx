@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight } from "lucide-react";
+import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight, CheckCircle, XCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { Hospital, Doctor } from "../data/mockData";
 import { getHospitalByIdAPI } from "../services/api";
@@ -468,10 +468,16 @@ export function HospitalDetail() {
                         {review.patientName && review.patientName !== "Anonymous" && (
                           <span className="font-medium text-gray-900">{review.patientName}</span>
                         )}
-                        {review.verified && (
-                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
-                            Verified Patient
-                          </span>
+                        {review.verified ? (
+                          <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span className="text-xs font-medium">Verified Patient</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-red-50 text-red-700 px-2 py-1 rounded">
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span className="text-xs font-medium">Unverified</span>
+                          </div>
                         )}
                         <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
                       </div>
