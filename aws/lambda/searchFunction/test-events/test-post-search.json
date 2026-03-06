@@ -1,0 +1,15 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"query\": \"best hospital for cardiac surgery in Hyderabad\", \"customerId\": \"customer_test_123\", \"userContext\": {\"insuranceId\": \"policy_001\", \"location\": {\"latitude\": 17.385044, \"longitude\": 78.486671}}}",
+  "requestContext": {
+    "requestId": "test-request-001",
+    "http": {
+      "method": "POST",
+      "path": "/search"
+    }
+  }
+}

@@ -2,15 +2,44 @@ import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
-import { Hospital } from "../data/mockData";
+import { Hospital, Doctor } from "../data/mockData";
 import { getHospitalByIdAPI } from "../services/api";
 import { DoctorCard } from "../components/DoctorCard";
 import ReactMarkdown from "react-markdown";
+import { useSearch } from "../contexts/SearchContext";
 
 export function HospitalDetail() {
   const { id } = useParams();
   const [hospital, setHospital] = useState<Hospital | null>(null);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDoctorsLoading, setIsDoctorsLoading] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(new Set());
+  const [acceptedInsurance, setAcceptedInsurance] = useState<string[]>([]);
+  const { getHospitalById, searchId } = useSearch();
+
+  const toggleReviewExpansion = (reviewId: string) => {
+    setExpandedReviews(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(reviewId)) {
+        newSet.delete(reviewId);
+      } else {
+        newSet.add(reviewId);
+      }
+      return newSet;
+    });
+  };
+
+  const truncateReview = (text: string, maxSentences: number = 4) => {
+    // Split by sentence endings (., !, ?)
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    if (sentences.length <= maxSentences) {
+      return { truncated: text, needsTruncation: false };
+    }
+    const truncated = sentences.slice(0, maxSentences).join(' ');
+    return { truncated, needsTruncation: true };
+  };
 
   useEffect(() => {
     async function fetchHospital() {
@@ -18,8 +47,187 @@ export function HospitalDetail() {
       
       setIsLoading(true);
       try {
-        const data = await getHospitalByIdAPI(id);
-        setHospital(data);
+        // First try to get from search context (real API results)
+        const contextHospital = getHospitalById(id);
+        
+        if (contextHospital) {
+          console.log("[HospitalDetail] Found hospital in search context");
+          console.log("[HospitalDetail] Full hospital object:", contextHospital);
+          setHospital(contextHospital);
+          
+          // Fetch insurance companies for this hospital
+          const fetchInsuranceCompanies = async () => {
+            try {
+              // First, fetch the full hospital data to get insuranceCompanyIds
+              const hospitalResponse = await fetch(
+                `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/hospitals/${id}`
+              );
+              if (hospitalResponse.ok) {
+                const hospitalData = await hospitalResponse.json();
+                const insuranceIds = hospitalData.insuranceCompanyIds || [];
+                
+                if (insuranceIds.length > 0) {
+                  console.log("[HospitalDetail] Fetching insurance companies:", insuranceIds);
+                  
+                  // Fetch each insurance company
+                  const insurancePromises = insuranceIds.map(async (insuranceId: string) => {
+                    try {
+                      const response = await fetch(
+                        `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/insurance-companies/${insuranceId}`
+                      );
+                      if (response.ok) {
+                        const data = await response.json();
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} full response:`, JSON.stringify(data, null, 2));
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} name field:`, data.insuranceCompanyName);
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} all keys:`, Object.keys(data));
+                        // Return the name, or null if name is not available
+                        return data.insuranceCompanyName || data.name || null;
+                      } else {
+                        const errorText = await response.text();
+                        console.warn(`[HospitalDetail] Failed to fetch insurance ${insuranceId}: ${response.status}`, errorText);
+                        return null; // Return null for failed fetches
+                      }
+                    } catch (error) {
+                      console.error(`Failed to fetch insurance ${insuranceId}:`, error);
+                      return null; // Return null for errors
+                    }
+                  });
+                  
+                  const insuranceResults = await Promise.all(insurancePromises);
+                  // Filter out null values (failed fetches)
+                  const insuranceNames = insuranceResults.filter((name): name is string => name !== null);
+                  console.log("[HospitalDetail] Fetched insurance names:", insuranceNames);
+                  
+                  if (insuranceNames.length > 0) {
+                    setAcceptedInsurance(insuranceNames);
+                  } else {
+                    // If all fetches failed, use defaults
+                    console.log("[HospitalDetail] All insurance fetches failed, using defaults");
+                    setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
+                  }
+                } else {
+                  console.log("[HospitalDetail] No insurance IDs found, using defaults");
+                  // Fallback to default list
+                  setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
+                }
+              } else {
+                console.warn("[HospitalDetail] Failed to fetch hospital data:", hospitalResponse.status);
+                setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
+              }
+            } catch (error) {
+              console.error("[HospitalDetail] Failed to fetch insurance companies:", error);
+              // Fallback to default list
+              setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
+            }
+          };
+          
+          fetchInsuranceCompanies();
+          
+          // Check if hospital has topDoctorIds - these are the doctor IDs from LLM
+          if (contextHospital.topDoctorIds && contextHospital.topDoctorIds.length > 0) {
+            console.log("[HospitalDetail] Found topDoctorIds:", contextHospital.topDoctorIds);
+            console.log("[HospitalDetail] doctorAIReviews:", contextHospital.doctorAIReviews);
+            setIsDoctorsLoading(true);
+            
+            try {
+              // Get doctor AI reviews from the hospital object
+              const doctorAIReviews = contextHospital.doctorAIReviews || {};
+              console.log("[HospitalDetail] Using doctorAIReviews mapping:", doctorAIReviews);
+              
+              // Fetch each doctor's details from the Doctor API
+              const doctorPromises = contextHospital.topDoctorIds.map(async (doctorId: string) => {
+                try {
+                  // Fetch doctor data
+                  const doctorResponse = await fetch(
+                    `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors/${doctorId}`
+                  );
+                  if (!doctorResponse.ok) {
+                    console.error(`Failed to fetch doctor ${doctorId}`);
+                    return null;
+                  }
+                  const doctorData = await doctorResponse.json();
+                  
+                  // Fetch doctor reviews to get review count
+                  let reviewCount = 0;
+                  try {
+                    const reviewsResponse = await fetch(
+                      `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/reviews?doctorId=${doctorId}&limit=100`
+                    );
+                    if (reviewsResponse.ok) {
+                      const reviewsData = await reviewsResponse.json();
+                      reviewCount = reviewsData.count || 0;
+                      console.log(`[HospitalDetail] Doctor ${doctorId} has ${reviewCount} reviews`);
+                    }
+                  } catch (error) {
+                    console.warn(`Failed to fetch reviews for doctor ${doctorId}:`, error);
+                  }
+                  
+                  // Get AI review for this doctor
+                  const aiReview = doctorAIReviews[doctorId] || "";
+                  console.log(`[HospitalDetail] Doctor ${doctorId} AI review:`, aiReview ? "Found" : "EMPTY");
+                  
+                  // Extract qualifications from 'about' field since Doctor table doesn't have qualifications field
+                  const qualifications: string[] = [];
+                  const about = doctorData.about || "";
+                  
+                  // Look for common qualification patterns in the about text
+                  const qualMatches = about.match(/\b(MBBS|MD|MS|MCh|DM|DNB|FRCS|MRCP|PhD|Fellowship|Board Certified)\b/gi);
+                  if (qualMatches && qualMatches.length > 0) {
+                    // Remove duplicates and limit to first 5
+                    const seen = new Set<string>();
+                    for (const qual of qualMatches) {
+                      const upper = qual.toUpperCase();
+                      if (!seen.has(upper) && qualifications.length < 5) {
+                        seen.add(upper);
+                        qualifications.push(upper);
+                      }
+                    }
+                    console.log(`[HospitalDetail] Extracted qualifications for ${doctorId}:`, qualifications);
+                  } else {
+                    console.log(`[HospitalDetail] No qualifications found in about text for ${doctorId}`);
+                  }
+                  
+                  // Transform to UI format
+                  return {
+                    id: doctorData.doctorId,
+                    name: doctorData.doctorName || "Unknown Doctor",
+                    specialty: doctorData.specialty || "General",
+                    experience: doctorData.yearsOfExperience || 10,
+                    qualifications: qualifications,
+                    rating: doctorData.rating || 4.5,
+                    reviewCount: reviewCount,  // Use fetched review count
+                    imageUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200",  // Use real image URL
+                    aiSummary: aiReview, // Use AI review from hospital object
+                    reviews: [],
+                  };
+                } catch (error) {
+                  console.error(`Error fetching doctor ${doctorId}:`, error);
+                  return null;
+                }
+              });
+              
+              const fetchedDoctors = (await Promise.all(doctorPromises)).filter(d => d !== null);
+              console.log("[HospitalDetail] Fetched doctors:", fetchedDoctors.length);
+              console.log("[HospitalDetail] Doctors with AI reviews:", fetchedDoctors.filter(d => d.aiSummary).length);
+              setDoctors(fetchedDoctors);
+            } catch (error) {
+              console.error("[HospitalDetail] Failed to fetch doctors:", error);
+              setDoctors([]);
+            } finally {
+              setIsDoctorsLoading(false);
+            }
+          } else {
+            console.warn("[HospitalDetail] No topDoctorIds available");
+            setDoctors([]);
+          }
+        } else {
+          // Fallback to mock data
+          console.log("[HospitalDetail] Hospital not in context, fetching from API");
+          const data = await getHospitalByIdAPI(id);
+          setHospital(data);
+          // Use doctors from mock data
+          setDoctors(data?.doctors || []);
+        }
       } catch (error) {
         console.error("Failed to fetch hospital:", error);
       } finally {
@@ -28,7 +236,7 @@ export function HospitalDetail() {
     }
 
     fetchHospital();
-  }, [id]);
+  }, [id, getHospitalById, searchId]);
 
   if (isLoading) {
     return (
@@ -76,6 +284,9 @@ export function HospitalDetail() {
               src={hospital.imageUrl}
               alt={hospital.name}
               className="w-32 h-32 rounded-lg object-cover"
+              onError={(e) => {
+                e.currentTarget.src = "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400";
+              }}
             />
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{hospital.name}</h1>
@@ -114,16 +325,26 @@ export function HospitalDetail() {
               className="bg-white rounded-lg border border-gray-200 p-6"
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">About</h2>
-              <p className="text-gray-700 mb-4">{hospital.description}</p>
+              <div className={`prose max-w-none text-gray-700 mb-4 ${!isDescriptionExpanded ? 'line-clamp-5' : ''}`}>
+                <ReactMarkdown>{hospital.description}</ReactMarkdown>
+              </div>
+              {hospital.description && hospital.description.split('\n').length > 5 && (
+                <button
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+                >
+                  {isDescriptionExpanded ? 'Show less' : 'Read more...'}
+                </button>
+              )}
 
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-4 gap-4 mt-4 mb-4">
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-2">
                     <DollarSign className="w-4 h-4" />
                     <span>Cost Range</span>
                   </div>
                   <p className="text-lg font-semibold">
-                    ${(hospital.avgCostRange.min / 1000).toFixed(0)}k - $
+                    ₹{(hospital.avgCostRange.min / 1000).toFixed(0)}k - ₹
                     {(hospital.avgCostRange.max / 1000).toFixed(0)}k
                   </p>
                 </div>
@@ -140,6 +361,13 @@ export function HospitalDetail() {
                     <span>Rating</span>
                   </div>
                   <p className="text-lg font-semibold">{hospital.rating}/5.0</p>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-orange-700 text-sm font-medium mb-2">
+                    <Phone className="w-4 h-4" />
+                    <span>Contact</span>
+                  </div>
+                  <p className="text-sm font-semibold">(555) 123-4567</p>
                 </div>
               </div>
 
@@ -184,11 +412,26 @@ export function HospitalDetail() {
               className="bg-white rounded-lg border border-gray-200 p-6"
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Our Top Doctors</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {hospital.doctors.map((doctor, index) => (
-                  <DoctorCard key={doctor.id} doctor={doctor} index={index} />
-                ))}
-              </div>
+              {isDoctorsLoading ? (
+                <div className="text-center py-8">
+                  <motion.div
+                    className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full mx-auto mb-3"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  />
+                  <p className="text-gray-600 text-sm">Loading doctors...</p>
+                </div>
+              ) : doctors.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {doctors.map((doctor, index) => (
+                    <DoctorCard key={doctor.id} doctor={doctor} index={index} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No doctor information available</p>
+                </div>
+              )}
             </motion.div>
 
             {/* Patient Reviews */}
@@ -200,51 +443,67 @@ export function HospitalDetail() {
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Patient Reviews</h2>
               <div className="space-y-4">
-                {hospital.reviews.map((review) => (
-                  <div key={review.id} className="border-b border-gray-200 last:border-0 pb-4 last:pb-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`w-4 h-4 ${
-                              i < review.rating
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-gray-300"
-                            }`}
-                          />
-                        ))}
+                {hospital.reviews.map((review) => {
+                  const isExpanded = expandedReviews.has(review.id);
+                  const { truncated, needsTruncation } = truncateReview(review.comment);
+                  const displayText = isExpanded ? review.comment : truncated;
+                  
+                  return (
+                    <div key={review.id} className="border-b border-gray-200 last:border-0 pb-4 last:pb-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={`w-4 h-4 ${
+                                i < review.rating
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "text-gray-300"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-medium text-gray-900">{review.patientName}</span>
+                        {review.verified && (
+                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
+                            Verified Patient
+                          </span>
+                        )}
+                        <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
                       </div>
-                      <span className="font-medium text-gray-900">{review.patientName}</span>
-                      {review.verified && (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
-                          Verified Patient
-                        </span>
+                      <p className="font-medium text-gray-900 mb-2">{review.treatment}</p>
+                      <div className="text-gray-700 mb-2 prose prose-sm max-w-none">
+                        <ReactMarkdown>{displayText}</ReactMarkdown>
+                      </div>
+                      {needsTruncation && (
+                        <button
+                          onClick={() => toggleReviewExpansion(review.id)}
+                          className="text-blue-600 hover:text-blue-700 font-medium text-sm mb-3"
+                        >
+                          {isExpanded ? 'Show less' : 'Read more...'}
+                        </button>
                       )}
-                      <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
-                    </div>
-                    <p className="font-medium text-gray-900 mb-2">{review.treatment}</p>
-                    <p className="text-gray-700 mb-3">{review.comment}</p>
-                    <div className="flex gap-4 text-sm">
-                      <div className="bg-gray-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Total Cost: </span>
-                        <span className="font-semibold">${review.cost.toLocaleString()}</span>
-                      </div>
-                      <div className="bg-green-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Insurance Covered: </span>
-                        <span className="font-semibold text-green-700">
-                          ${review.insuranceCovered.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="bg-blue-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Out of Pocket: </span>
-                        <span className="font-semibold text-blue-700">
-                          ${(review.cost - review.insuranceCovered).toLocaleString()}
-                        </span>
+                      <div className="flex gap-4 text-sm">
+                        <div className="bg-gray-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Total Cost: </span>
+                          <span className="font-semibold">₹{review.cost.toLocaleString()}</span>
+                        </div>
+                        <div className="bg-green-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Insurance Covered: </span>
+                          <span className="font-semibold text-green-700">
+                            ₹{review.insuranceCovered.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="bg-blue-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Out of Pocket: </span>
+                          <span className="font-semibold text-blue-700">
+                            ₹{(review.cost - review.insuranceCovered).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           </div>
@@ -263,15 +522,19 @@ export function HospitalDetail() {
                   Insurance Accepted
                 </h3>
                 <div className="space-y-2">
-                  {hospital.acceptedInsurance.map((insurance) => (
-                    <div
-                      key={insurance}
-                      className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                    >
-                      <span className="text-sm text-gray-700">{insurance}</span>
-                      <ChevronRight className="w-4 h-4 text-gray-400" />
-                    </div>
-                  ))}
+                  {acceptedInsurance.length > 0 ? (
+                    acceptedInsurance.map((insurance) => (
+                      <div
+                        key={insurance}
+                        className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                      >
+                        <span className="text-sm text-gray-700">{insurance}</span>
+                        <ChevronRight className="w-4 h-4 text-gray-400" />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">Loading insurance information...</div>
+                  )}
                 </div>
               </motion.div>
 

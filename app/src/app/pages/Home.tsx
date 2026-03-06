@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { Search, Sparkles } from "lucide-react";
 import { HospitalCard } from "../components/HospitalCard";
-import { DoctorCard } from "../components/DoctorCard";
 import { Hospital } from "../data/mockData";
 import { motion, AnimatePresence } from "motion/react";
 import { searchHospitalsAPI } from "../services/api";
-import { HospitalCardSkeleton, LoadingSpinner } from "../components/LoadingSkeleton";
+import { LoadingSpinner } from "../components/LoadingSkeleton";
+import { useSearch } from "../contexts/SearchContext";
 
 export function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Hospital[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [hoveredHospital, setHoveredHospital] = useState<Hospital | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { setSearchResults: setGlobalSearchResults, setSearchId: setGlobalSearchId } = useSearch();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,15 +23,19 @@ export function Home() {
 
     setIsLoading(true);
     setHasSearched(true);
-    setHoveredHospital(null);
 
     try {
-      // Call the dummy API
-      const results = await searchHospitalsAPI(searchQuery);
-      setSearchResults(results);
+      // Call the search API
+      const { hospitals, searchId } = await searchHospitalsAPI(searchQuery);
+      setSearchResults(hospitals);
+      // Store in global context so detail page can access
+      setGlobalSearchResults(hospitals);
+      setGlobalSearchId(searchId);
     } catch (error) {
       console.error("Search failed:", error);
       setSearchResults([]);
+      setGlobalSearchResults([]);
+      setGlobalSearchId(null);
     } finally {
       setIsLoading(false);
     }
@@ -137,65 +141,17 @@ export function Home() {
                     Found {searchResults.length} hospitals matching your needs
                   </h2>
                   <p className="text-gray-600">
-                    Hover over a hospital to see top doctors on the right
+                    Click on any hospital to see detailed information and top doctors
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Hospital Results */}
-                  <div className="lg:col-span-2 space-y-6">
-                    {searchResults.map((hospital) => (
-                      <HospitalCard
-                        key={hospital.id}
-                        hospital={hospital}
-                        onHover={setHoveredHospital}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Doctors Sidebar */}
-                  <div className="lg:col-span-1">
-                    <div className="sticky top-6">
-                      <AnimatePresence mode="wait">
-                        {hoveredHospital ? (
-                          <motion.div
-                            key={hoveredHospital.id}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                          >
-                            <div className="bg-white rounded-lg border-2 border-blue-200 p-4 mb-4">
-                              <h3 className="font-semibold mb-1">Top Doctors at</h3>
-                              <p className="text-sm text-gray-600">{hoveredHospital.name}</p>
-                            </div>
-                            <div className="space-y-4">
-                              {hoveredHospital.doctors.map((doctor, index) => (
-                                <DoctorCard key={doctor.id} doctor={doctor} index={index} />
-                              ))}
-                            </div>
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-8 text-center border border-blue-100"
-                          >
-                            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <Sparkles className="w-8 h-8 text-blue-600" />
-                            </div>
-                            <h3 className="font-semibold text-gray-900 mb-2">
-                              Discover Top Doctors
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              Hover over any hospital card to see their top-rated doctors and
-                              specialists
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
+                <div className="space-y-6">
+                  {searchResults.map((hospital) => (
+                    <HospitalCard
+                      key={hospital.id}
+                      hospital={hospital}
+                    />
+                  ))}
                 </div>
               </>
             ) : (

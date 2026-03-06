@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { useAuth } from "react-oidc-context"
 import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { SearchProvider } from "./contexts/SearchContext"
 import { Layout } from "./components/Layout"
 import { Home } from "./pages/Home"
 import { CreateReview } from "./pages/CreateReview"
@@ -47,18 +48,20 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="create-review" element={<CreateReview />} />
-          <Route path="past-reviews" element={<PastReviews />} />
-          <Route path="my-reviews" element={<PastReviews />} />
-          <Route path="my-documents" element={<MyDocuments />} />
-          <Route path="my-details" element={<MyDetails />} />
-          <Route path="hospital/:id" element={<HospitalDetail />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <SearchProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="create-review" element={<CreateReview />} />
+            <Route path="past-reviews" element={<PastReviews />} />
+            <Route path="my-reviews" element={<PastReviews />} />
+            <Route path="my-documents" element={<MyDocuments />} />
+            <Route path="my-details" element={<MyDetails />} />
+            <Route path="hospital/:id" element={<HospitalDetail />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </SearchProvider>
   )
 }

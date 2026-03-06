@@ -1,0 +1,15 @@
+{
+  "httpMethod": "POST",
+  "path": "/search",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"query\": \"hospitals for knee replacement surgery\", \"customerId\": \"customer_456\"}",
+  "requestContext": {
+    "requestId": "test-request-004",
+    "http": {
+      "method": "POST",
+      "path": "/search"
+    }
+  }
+}

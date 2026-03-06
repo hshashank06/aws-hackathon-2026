@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Star, GraduationCap, Briefcase, Award } from "lucide-react";
+import { Star, GraduationCap, Briefcase } from "lucide-react";
 import { Doctor } from "../data/mockData";
 import ReactMarkdown from "react-markdown";
 
@@ -29,20 +29,18 @@ export function DoctorCard({ doctor, index }: DoctorCardProps) {
           <div className="flex items-center gap-1 mt-1">
             <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
             <span className="text-xs font-medium">{doctor.rating}</span>
-            <span className="text-xs text-gray-500">({doctor.reviewCount})</span>
+            {doctor.reviewCount > 0 && (
+              <span className="text-xs text-gray-500">({doctor.reviewCount})</span>
+            )}
           </div>
         </div>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-1 gap-2 mb-3">
         <div className="flex items-center gap-1.5 text-xs">
           <Briefcase className="w-3 h-3 text-blue-600" />
           <span className="text-gray-600">{doctor.experience} years exp.</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <Award className="w-3 h-3 text-purple-600" />
-          <span className="text-gray-600">{doctor.qualifications.length} certs</span>
         </div>
       </div>
 
@@ -53,11 +51,15 @@ export function DoctorCard({ doctor, index }: DoctorCardProps) {
           <span className="text-xs font-medium text-gray-700">Qualifications</span>
         </div>
         <div className="flex flex-wrap gap-1">
-          {doctor.qualifications.map((qual) => (
-            <span key={qual} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-              {qual}
-            </span>
-          ))}
+          {doctor.qualifications && doctor.qualifications.length > 0 ? (
+            doctor.qualifications.map((qual) => (
+              <span key={qual} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium">
+                {qual}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-gray-500">No qualifications listed</span>
+          )}
         </div>
       </div>
 

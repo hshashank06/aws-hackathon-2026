@@ -1,0 +1,20 @@
+{
+  "httpMethod": "GET",
+  "path": "/hospitals/hospital_nizams_institute_of_medical_sciences_nims_500082/doctors",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "pathParameters": {
+    "hospitalId": "hospital_nizams_institute_of_medical_sciences_nims_500082"
+  },
+  "queryStringParameters": {
+    "searchId": "search_1234567890_abc123"
+  },
+  "requestContext": {
+    "requestId": "test-request-003",
+    "http": {
+      "method": "GET",
+      "path": "/hospitals/hospital_nizams_institute_of_medical_sciences_nims_500082/doctors"
+    }
+  }
+}

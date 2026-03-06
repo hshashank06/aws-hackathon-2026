@@ -59,20 +59,27 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "FXGJQUGRJQ")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "TOUEUHIO1O")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
     "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com"
 )
+DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "SearchResults")
+DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 
 # Initialize AWS clients
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=BEDROCK_REGION)
+dynamodb = boto3.resource("dynamodb", region_name=DYNAMODB_REGION)
+search_results_table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+lambda_client = boto3.client("lambda", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 # Constants
 MAX_WORKERS = 20  # For parallel API calls
 REQUEST_TIMEOUT = 10  # seconds for HTTP requests
 AGENT_TIMEOUT = 30  # seconds for Bedrock Agent invocation
+LLM_MAX_RETRIES = 3  # Maximum retries for LLM invocation
+SEARCH_RESULT_TTL_HOURS = 5  # Search results expire after 5 hours
 
 
 # ---------------------------------------------------------------------------
@@ -118,99 +125,239 @@ def _parse_body(event: dict) -> dict:
     return raw
 
 
+def convert_floats_to_decimal(obj: Any) -> Any:
+    """
+    Recursively convert all float values to Decimal for DynamoDB compatibility.
+    
+    Args:
+        obj: Object to convert (dict, list, or primitive)
+    
+    Returns:
+        Object with floats converted to Decimal
+    """
+    if isinstance(obj, dict):
+        return {k: convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    elif isinstance(obj, float):
+        return Decimal(str(obj))
+    else:
+        return obj
+
+
+def deserialize_dynamodb_json(obj: Any) -> Any:
+    """
+    Recursively deserialize DynamoDB JSON format to Python types.
+    Handles: {"S": "value"}, {"N": "123"}, {"L": [...]}, {"M": {...}}, {"NULL": true}
+    
+    Args:
+        obj: Object in DynamoDB JSON format
+    
+    Returns:
+        Deserialized Python object
+    """
+    if isinstance(obj, dict):
+        # Check if this is a DynamoDB type descriptor
+        if len(obj) == 1:
+            type_key = list(obj.keys())[0]
+            value = obj[type_key]
+            
+            if type_key == "S":  # String
+                return value
+            elif type_key == "N":  # Number
+                try:
+                    # Try int first, then float
+                    if "." in value:
+                        return float(value)
+                    return int(value)
+                except:
+                    return value
+            elif type_key == "L":  # List
+                return [deserialize_dynamodb_json(item) for item in value]
+            elif type_key == "M":  # Map
+                return {k: deserialize_dynamodb_json(v) for k, v in value.items()}
+            elif type_key == "NULL":  # Null
+                return None
+            elif type_key == "BOOL":  # Boolean
+                return value
+        
+        # Regular dict - recurse into values
+        return {k: deserialize_dynamodb_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [deserialize_dynamodb_json(item) for item in obj]
+    else:
+        return obj
+
+
+def save_search_results(search_id: str, status: str, llm_response: dict = None, error: str = None) -> None:
+    """
+    Save search results to DynamoDB.
+    
+    Args:
+        search_id: Unique search identifier
+        status: Search status ("processing", "complete", "error")
+        llm_response: Raw LLM response (optional)
+        error: Error message if status is "error" (optional)
+    """
+    try:
+        # Calculate TTL (5 hours from now)
+        ttl = int(time.time()) + (SEARCH_RESULT_TTL_HOURS * 3600)
+        
+        item = {
+            "searchId": search_id,
+            "status": status,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "ttl": ttl
+        }
+        
+        if llm_response:
+            # Convert floats to Decimal for DynamoDB
+            item["llmResponse"] = convert_floats_to_decimal(llm_response)
+        
+        if error:
+            item["error"] = error
+        
+        search_results_table.put_item(Item=item)
+        logger.info("Search results saved | SearchId=%s | Status=%s", search_id, status)
+    
+    except Exception as e:
+        logger.error("Failed to save search results | SearchId=%s | Error=%s", search_id, str(e))
+        raise
+
+
+def get_search_results(search_id: str) -> dict:
+    """
+    Get search results from DynamoDB.
+    
+    Args:
+        search_id: Unique search identifier
+    
+    Returns:
+        dict: Search results item
+    """
+    try:
+        response = search_results_table.get_item(
+            Key={"searchId": search_id},
+            ConsistentRead=True
+        )
+        
+        if "Item" not in response:
+            logger.warning("Search results not found | SearchId=%s", search_id)
+            return None
+        
+        item = response["Item"]
+        
+        # Deserialize llmResponse if it's in DynamoDB JSON format
+        if "llmResponse" in item:
+            llm_response = item["llmResponse"]
+            # Check if it's in DynamoDB format (has type descriptors like {"S": "..."})
+            if isinstance(llm_response, dict) and any(k in llm_response for k in ["S", "N", "L", "M", "NULL", "BOOL"]):
+                logger.info("Deserializing DynamoDB JSON format | SearchId=%s", search_id)
+                item["llmResponse"] = deserialize_dynamodb_json(llm_response)
+        
+        return item
+    
+    except Exception as e:
+        logger.error("Failed to get search results | SearchId=%s | Error=%s", search_id, str(e))
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Bedrock Agent Integration
 # ---------------------------------------------------------------------------
 
-def invoke_bedrock_agent(query: str, customer_id: str) -> dict:
+def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MAX_RETRIES) -> dict:
     """
-    Invoke AWS Bedrock Agent for AI-powered hospital recommendations.
+    Invoke AWS Bedrock Agent for AI-powered hospital recommendations with retry logic.
     
     Args:
         query: User's search query
         customer_id: Customer ID (used as sessionId for conversation memory)
+        max_retries: Maximum number of retry attempts
     
     Returns:
         dict: LLM response with aiSummary and hospitals array
     
     Raises:
-        Exception: If agent invocation fails or times out
+        Exception: If agent invocation fails after all retries
     """
     session_id = customer_id or f"session_{uuid.uuid4().hex[:12]}"
     
-    logger.info(
-        "Invoking Bedrock Agent | AgentId=%s | AliasId=%s | SessionId=%s | Query='%s'",
-        BEDROCK_AGENT_ID,
-        BEDROCK_AGENT_ALIAS_ID,
-        session_id,
-        query[:100]  # Log first 100 chars
-    )
-    
-    start_time = time.time()
-    
-    try:
-        response = bedrock_agent_runtime.invoke_agent(
-            agentId=BEDROCK_AGENT_ID,
-            agentAliasId=BEDROCK_AGENT_ALIAS_ID,
-            sessionId=session_id,
-            inputText=query,
-        )
-        
-        # Properly handle streaming response - collect ALL chunks
-        full_response = ""
-        chunk_count = 0
-        
-        # Process all events in the completion stream
-        # CRITICAL: Must iterate through ALL events to get complete response
-        completion_stream = response.get("completion", [])
-        
-        for event in completion_stream:
-            # Log event type for debugging
-            event_type = list(event.keys())[0] if event else "unknown"
-            logger.debug("Event received | Type=%s", event_type)
-            
-            if "chunk" in event:
-                chunk = event["chunk"]
-                if "bytes" in chunk:
-                    # Decode bytes and append to full response
-                    chunk_data = chunk["bytes"].decode("utf-8")
-                    full_response += chunk_data
-                    chunk_count += 1
-                    logger.debug("Chunk %d received | Length=%d | Content=%s", 
-                                chunk_count, len(chunk_data), chunk_data[:100])
-            
-            # Handle other event types that might contain data
-            elif "trace" in event:
-                logger.debug("Trace event received")
-            elif "returnControl" in event:
-                logger.debug("ReturnControl event received")
-            elif "internalServerException" in event:
-                logger.error("InternalServerException in stream")
-                raise Exception("Bedrock Agent internal server error")
-            elif "validationException" in event:
-                logger.error("ValidationException in stream")
-                raise Exception("Bedrock Agent validation error")
-        
-        # Ensure we received some response
-        if not full_response:
-            logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
-            raise Exception("Empty response from Bedrock Agent")
-        
-        elapsed = time.time() - start_time
-        logger.info(
-            "Bedrock Agent response received | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
-            chunk_count,
-            len(full_response),
-            elapsed
-        )
-        
-        # Log full response for debugging (truncated to 3000 chars)
-        logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
-        if len(full_response) > 3000:
-            logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
-        
-        # Parse JSON response - extract JSON from conversational text
+    for attempt in range(1, max_retries + 1):
         try:
+            logger.info(
+                "Invoking Bedrock Agent | Attempt=%d/%d | AgentId=%s | AliasId=%s | SessionId=%s | Query='%s'",
+                attempt,
+                max_retries,
+                BEDROCK_AGENT_ID,
+                BEDROCK_AGENT_ALIAS_ID,
+                session_id,
+                query[:100]
+            )
+            
+            start_time = time.time()
+            
+            response = bedrock_agent_runtime.invoke_agent(
+                agentId=BEDROCK_AGENT_ID,
+                agentAliasId=BEDROCK_AGENT_ALIAS_ID,
+                sessionId=session_id,
+                inputText=query,
+            )
+            
+            # Properly handle streaming response - collect ALL chunks
+            full_response = ""
+            chunk_count = 0
+            
+            # Process all events in the completion stream
+            # CRITICAL: Must iterate through ALL events to get complete response
+            completion_stream = response.get("completion", [])
+            
+            for event in completion_stream:
+                # Log event type for debugging
+                event_type = list(event.keys())[0] if event else "unknown"
+                logger.debug("Event received | Type=%s", event_type)
+                
+                if "chunk" in event:
+                    chunk = event["chunk"]
+                    if "bytes" in chunk:
+                        # Decode bytes and append to full response
+                        chunk_data = chunk["bytes"].decode("utf-8")
+                        full_response += chunk_data
+                        chunk_count += 1
+                        logger.debug("Chunk %d received | Length=%d | Content=%s", 
+                                    chunk_count, len(chunk_data), chunk_data[:100])
+                
+                # Handle other event types that might contain data
+                elif "trace" in event:
+                    logger.debug("Trace event received")
+                elif "returnControl" in event:
+                    logger.debug("ReturnControl event received")
+                elif "internalServerException" in event:
+                    logger.error("InternalServerException in stream")
+                    raise Exception("Bedrock Agent internal server error")
+                elif "validationException" in event:
+                    logger.error("ValidationException in stream")
+                    raise Exception("Bedrock Agent validation error")
+            
+            # Ensure we received some response
+            if not full_response:
+                logger.error("No response received from Bedrock Agent | ChunkCount=%d", chunk_count)
+                raise Exception("Empty response from Bedrock Agent")
+            
+            elapsed = time.time() - start_time
+            logger.info(
+                "Bedrock Agent response received | Chunks=%d | ResponseLength=%d | Duration=%.2fs",
+                chunk_count,
+                len(full_response),
+                elapsed
+            )
+            
+            # Log full response for debugging (truncated to 3000 chars)
+            logger.info("Full Agent response (first 3000 chars): %s", full_response[:3000])
+            if len(full_response) > 3000:
+                logger.info("Full Agent response (last 500 chars): %s", full_response[-500:])
+            
+            # Parse JSON response - extract JSON from conversational text
             # Find the first '{' and extract JSON from there
             json_start = full_response.find('{')
             if json_start == -1:
@@ -237,29 +384,212 @@ def invoke_bedrock_agent(query: str, customer_id: str) -> dict:
             
             llm_data = json.loads(json_str)
             logger.info(
-                "LLM response parsed | Hospitals=%d | HasSummary=%s",
+                "LLM response parsed successfully | Attempt=%d | Hospitals=%d | HasSummary=%s",
+                attempt,
                 len(llm_data.get("hospitals", [])),
                 "aiSummary" in llm_data
             )
             return llm_data
+        
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response as JSON | Error=%s | Response=%s", str(e), full_response[:500])
+            logger.error("Failed to parse LLM response as JSON | Attempt=%d | Error=%s | Response=%s", attempt, str(e), full_response[:500])
             logger.error("JSON string that failed to parse (last 500 chars): %s", json_str[-500:] if len(json_str) > 500 else json_str)
-            raise ValueError(f"Invalid JSON response from Bedrock Agent: {str(e)}")
+            if attempt < max_retries:
+                logger.info("Retrying LLM invocation | Attempt=%d/%d", attempt + 1, max_retries)
+                time.sleep(1)  # Wait 1 second before retry
+                continue
+            raise ValueError(f"Invalid JSON response from Bedrock Agent after {max_retries} attempts: {str(e)}")
+        
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            error_msg = e.response["Error"]["Message"]
+            logger.error(
+                "Bedrock Agent invocation failed | Attempt=%d | ErrorCode=%s | ErrorMsg=%s",
+                attempt,
+                error_code,
+                error_msg
+            )
+            if attempt < max_retries:
+                logger.info("Retrying LLM invocation | Attempt=%d/%d", attempt + 1, max_retries)
+                time.sleep(1)  # Wait 1 second before retry
+                continue
+            raise Exception(f"Bedrock Agent error after {max_retries} attempts: {error_code} - {error_msg}")
+        
+        except Exception as e:
+            logger.error("Unexpected error invoking Bedrock Agent | Attempt=%d | Error=%s", attempt, str(e))
+            if attempt < max_retries:
+                logger.info("Retrying LLM invocation | Attempt=%d/%d", attempt + 1, max_retries)
+                time.sleep(1)  # Wait 1 second before retry
+                continue
+            logger.exception("All retry attempts exhausted")
+            raise
+
+
+# ---------------------------------------------------------------------------
+# Async Search Processing
+# ---------------------------------------------------------------------------
+
+def process_search_async(search_id: str, query: str, customer_id: str, insurance_id: str = None):
+    """
+    Process search asynchronously in background thread.
+    This function invokes LLM and stores the raw LLM response in DynamoDB.
     
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_msg = e.response["Error"]["Message"]
-        logger.error(
-            "Bedrock Agent invocation failed | ErrorCode=%s | ErrorMsg=%s",
-            error_code,
-            error_msg
-        )
-        raise Exception(f"Bedrock Agent error: {error_code} - {error_msg}")
+    Args:
+        search_id: Unique search identifier
+        query: User's search query
+        customer_id: Customer ID
+        insurance_id: User's insurance ID (optional)
+    """
+    try:
+        logger.info("Starting async search processing | SearchId=%s", search_id)
+        
+        # Step 1: Invoke Bedrock Agent with retries
+        logger.info("STEP 1: Invoking Bedrock Agent with retries")
+        try:
+            llm_response = invoke_bedrock_agent(query, customer_id)
+        except Exception as e:
+            logger.error("LLM invocation failed after all retries | SearchId=%s | Error=%s", search_id, str(e))
+            save_search_results(search_id, "error", error=f"Failed to process search: {str(e)}")
+            return
+        
+        # Validate LLM response
+        if not llm_response.get("hospitals"):
+            logger.warning("LLM returned no hospitals | SearchId=%s", search_id)
+            save_search_results(search_id, "complete", llm_response=llm_response)
+            return
+        
+        logger.info("LLM response validated | SearchId=%s | HospitalCount=%d", search_id, len(llm_response.get("hospitals", [])))
+        
+        # Step 2: Store raw LLM response in DynamoDB
+        logger.info("STEP 2: Storing LLM response in DynamoDB | SearchId=%s", search_id)
+        save_search_results(search_id, "complete", llm_response=llm_response)
+        
+        logger.info("Async search processing complete | SearchId=%s", search_id)
     
     except Exception as e:
-        logger.exception("Unexpected error invoking Bedrock Agent")
-        raise
+        logger.exception("Async search processing failed | SearchId=%s", search_id)
+        save_search_results(search_id, "error", error=f"Internal error: {str(e)}")
+
+
+def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: list, insurance_id: str = None) -> dict:
+    """
+    Build enriched hospital object for UI.
+    
+    Args:
+        hospital_llm: Hospital data from LLM
+        hospital_data: Hospital data from API
+        reviews: Hospital reviews from API
+        insurance_id: User's insurance ID (optional)
+    
+    Returns:
+        dict: Enriched hospital object
+    """
+    
+    def clean_currency_value(value) -> int:
+        """
+        Clean currency value by removing symbols and converting to int.
+        Handles: ₹427123, $1000, 1000, "₹427123", etc.
+        """
+        if value is None:
+            return 0
+        
+        # Convert to string if not already
+        value_str = str(value)
+        
+        # Remove currency symbols and whitespace
+        cleaned = value_str.replace("₹", "").replace("$", "").replace(",", "").strip()
+        
+        # Try to convert to int
+        try:
+            return int(float(cleaned))
+        except (ValueError, TypeError):
+            return 0
+    
+    hospital_id = hospital_data.get("hospitalId")
+    
+    # Parse services
+    services = hospital_data.get("services", [])
+    if isinstance(services, str):
+        try:
+            services = json.loads(services)
+        except:
+            services = []
+    
+    # Extract location from address
+    address = hospital_data.get("address", "")
+    # Simple city extraction - take last part before state/country
+    location_parts = address.split(",")
+    location = location_parts[1].strip() if len(location_parts) > 1 else address
+    
+    # Calculate insurance coverage percentage
+    total_claims = hospital_data.get("totalNumberOfClaims", 0)
+    approved_claims = hospital_data.get("totalNumberOfClaimsApproved", 0)
+    insurance_coverage_percent = int((approved_claims / total_claims * 100)) if total_claims > 0 else 0
+    
+    # Extract doctor IDs from LLM response
+    top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]
+    
+    # Create a mapping of doctorId -> AI review
+    doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in hospital_llm.get("doctors", [])}
+    
+    # Log for debugging
+    logger.info(
+        "Building doctorAIReviews mapping | HospitalId=%s | DoctorsInLLM=%d | MappingSize=%d",
+        hospital_id,
+        len(hospital_llm.get("doctors", [])),
+        len(doctor_ai_reviews)
+    )
+    if doctor_ai_reviews:
+        logger.info("Sample doctorAIReviews keys: %s", list(doctor_ai_reviews.keys())[:3])
+    else:
+        logger.warning("doctorAIReviews is EMPTY | hospital_llm.doctors=%s", hospital_llm.get("doctors", []))
+    
+    # Format reviews for UI
+    formatted_reviews = []
+    for review in reviews[:2]:  # Only first 2 reviews
+        try:
+            payment = review.get("payment") or {}
+            claim = review.get("claim") or {}
+            
+            formatted_review = {
+                "id": review.get("reviewId", ""),
+                "patientName": review.get("customerName", "Anonymous"),
+                "rating": review.get("overallRating", 4),
+                "date": review.get("createdAt", "")[:10] if review.get("createdAt") else "",  # Extract date part
+                "treatment": review.get("procedureType", "General Treatment"),
+                "cost": clean_currency_value(payment.get("totalBillAmount")),
+                "insuranceCovered": clean_currency_value(claim.get("claimAmountApproved")),
+                "comment": review.get("hospitalReview", ""),
+                "verified": review.get("verified", False)
+            }
+            formatted_reviews.append(formatted_review)
+        except Exception as e:
+            logger.warning("Failed to format review | ReviewId=%s | Error=%s", review.get("reviewId"), str(e))
+            continue
+    
+    return {
+        "id": hospital_id,
+        "name": hospital_data.get("hospitalName", ""),
+        "location": location,
+        "rating": hospital_data.get("rating", 0),
+        "reviewCount": len(reviews),
+        "imageUrl": "/default-hospital.jpg",
+        "description": hospital_data.get("description", ""),
+        "specialties": services[:6],  # First 6 services as specialties
+        "avgCostRange": {
+            "min": hospital_data.get("minCost", 0),
+            "max": hospital_data.get("maxCost", 0)
+        },
+        "insuranceCoveragePercent": insurance_coverage_percent,
+        "trustScore": 85,  # Default
+        "verificationBadge": "gold",  # Default
+        "aiRecommendation": hospital_llm.get("hospitalAIReview", ""),
+        "reviews": formatted_reviews,  # Formatted reviews for UI
+        "doctors": [],  # Empty - will be lazy loaded
+        "topDoctorIds": top_doctor_ids,  # For lazy loading
+        "doctorAIReviews": doctor_ai_reviews,  # AI reviews for each doctor
+        "acceptedInsurance": ["Blue Cross", "United Health", "Aetna", "Medicare"]  # Default
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -322,15 +652,21 @@ def fetch_reviews(query_params: dict) -> list:
     Fetch reviews with query parameters.
     
     Args:
-        query_params: Dict of query parameters (hospitalId, doctorId, etc.)
+        query_params: Dict of query parameters (hospitalId, doctorId, limit, etc.)
     
     Returns:
         list: Review items
     """
-    params_str = "&".join([f"{k}={v}" for k, v in query_params.items()])
-    url = f"{API_GATEWAY_BASE_URL}/reviews?{params_str}&limit=100"
+    # Make a copy to avoid modifying the original dict
+    params = query_params.copy()
     
-    logger.debug("Fetching reviews | Params=%s", query_params)
+    # Extract limit if provided, default to 100
+    limit = params.pop("limit", 100)
+    
+    params_str = "&".join([f"{k}={v}" for k, v in params.items()])
+    url = f"{API_GATEWAY_BASE_URL}/reviews?{params_str}&limit={limit}"
+    
+    logger.info("Fetching reviews | URL=%s | Params=%s | Limit=%d", url, params, limit)
     
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT)
@@ -338,12 +674,17 @@ def fetch_reviews(query_params: dict) -> list:
         data = response.json()
         
         items = data.get("items", [])
-        logger.debug("Reviews fetched | Count=%d | Params=%s", len(items), query_params)
+        logger.info("Reviews fetched successfully | Count=%d | Params=%s", len(items), params)
         
         return items
     
+    except requests.exceptions.HTTPError as e:
+        logger.error("HTTP error fetching reviews | Status=%d | URL=%s | Error=%s", 
+                    e.response.status_code, url, str(e))
+        return []  # Return empty list on error, don't fail the whole search
+    
     except Exception as e:
-        logger.error("Failed to fetch reviews | Params=%s | Error=%s", query_params, str(e))
+        logger.error("Failed to fetch reviews | URL=%s | Params=%s | Error=%s", url, params, str(e))
         return []  # Return empty list on error, don't fail the whole search
 
 
@@ -724,27 +1065,25 @@ def enrich_doctor_data(
 
 def search_hospitals(event: dict) -> dict:
     """
-    Main search handler - orchestrates the entire search process.
+    Initiate async search and return searchId immediately.
     
     Process:
     1. Parse request and validate
-    2. Invoke Bedrock Agent for AI recommendations
-    3. Fetch detailed data from API Gateway (parallel)
-    4. Calculate statistics from reviews
-    5. Build comprehensive response
+    2. Generate searchId
+    3. Save initial status as "processing"
+    4. Invoke Lambda asynchronously to process search
+    5. Return searchId immediately
     
     Args:
         event: API Gateway event
     
     Returns:
-        dict: API Gateway response
+        dict: API Gateway response with searchId and status
     """
     request_id = event.get("requestContext", {}).get("requestId", uuid.uuid4().hex[:12])
     logger.info("=" * 80)
     logger.info("SEARCH REQUEST START | RequestId=%s", request_id)
     logger.info("=" * 80)
-    
-    start_time = time.time()
     
     try:
         # Parse request body
@@ -766,108 +1105,300 @@ def search_hospitals(event: dict) -> dict:
             logger.warning("Missing required field: query")
             return _error(400, "Missing required field: query")
         
-        # Step 1: Invoke Bedrock Agent
-        logger.info("STEP 1: Invoking Bedrock Agent")
+        # Generate searchId
+        search_id = f"search_{int(time.time())}_{request_id}"
+        logger.info("Generated searchId | SearchId=%s", search_id)
+        
+        # Save initial status
+        save_search_results(search_id, "processing")
+        
+        # Invoke Lambda asynchronously to process search
+        function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        
+        async_payload = {
+            "asyncSearch": True,
+            "searchId": search_id,
+            "query": query,
+            "customerId": customer_id,
+            "insuranceId": insurance_id
+        }
+        
         try:
-            llm_response = invoke_bedrock_agent(query, customer_id)
+            lambda_client.invoke(
+                FunctionName=function_name,
+                InvocationType="Event",  # Async invocation
+                Payload=json.dumps(async_payload)
+            )
+            logger.info("Async Lambda invoked | SearchId=%s", search_id)
         except Exception as e:
-            logger.error("Bedrock Agent invocation failed | Error=%s", str(e))
-            return _error(
-                503,
-                "Search service temporarily unavailable. Please try again.",
-                {"code": "AGENT_ERROR", "suggestion": "Try simplifying your search query"}
-            )
+            logger.error("Failed to invoke async Lambda | SearchId=%s | Error=%s", search_id, str(e))
+            save_search_results(search_id, "error", error="Failed to start async processing")
+            return _error(500, "Failed to initiate search processing")
         
-        # Validate LLM response
-        if not llm_response.get("hospitals"):
-            logger.warning("LLM returned no hospitals")
-            return _error(
-                404,
-                "No hospitals found matching your criteria. Try different keywords.",
-                {"code": "NO_RESULTS"}
-            )
+        # Return immediately with searchId
+        response_body = {
+            "searchId": search_id,
+            "status": "processing"
+        }
         
-        ai_summary = llm_response.get("aiSummary", "")
-        hospitals_llm = llm_response.get("hospitals", [])
-        
-        logger.info("LLM response validated | HospitalCount=%d", len(hospitals_llm))
-
-
-        # Step 2: Extract IDs from LLM response
-        logger.info("STEP 2: Extracting IDs from LLM response")
-        hospital_ids = [h["hospitalId"] for h in hospitals_llm]
-        
-        # Extract doctor IDs from LLM recommendations
-        llm_doctor_ids = []
-        for h in hospitals_llm:
-            for d in h.get("doctors", []):
-                doctor_id = d["doctorId"]
-                llm_doctor_ids.append(doctor_id)
-                logger.info("Extracted doctor ID from LLM | DoctorId=%s | HospitalId=%s", doctor_id, h["hospitalId"])
-        
-        logger.info(
-            "IDs extracted | Hospitals=%d | LLM-recommended Doctors=%d",
-            len(hospital_ids),
-            len(llm_doctor_ids)
+        logger.info("Search initiated | SearchId=%s", search_id)
+        return _ok(response_body, 202)  # 202 Accepted
+    
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in request body")
+        return _error(400, "Invalid JSON in request body")
+    
+    except Exception as e:
+        logger.exception("Failed to initiate search | RequestId=%s", request_id)
+        return _error(
+            500,
+            "Failed to initiate search. Please try again.",
+            {"code": "INTERNAL_ERROR"}
         )
+
+
+def get_search_status(event: dict) -> dict:
+    """
+    Get search status and results.
+    Enriches hospital data on-the-fly from LLM response.
+    
+    Args:
+        event: API Gateway event with searchId in path parameters
+    
+    Returns:
+        dict: API Gateway response with status and enriched results (if complete)
+    """
+    try:
+        # Extract searchId from path parameters
+        path_params = event.get("pathParameters", {})
+        search_id = path_params.get("searchId")
         
-        # Step 3: Fetch data in parallel
-        logger.info("STEP 3: Fetching data from API Gateway (parallel)")
+        if not search_id:
+            logger.warning("Missing searchId in path parameters")
+            return _error(400, "Missing searchId")
         
-        hospitals_data = {}
+        logger.info("Getting search status | SearchId=%s", search_id)
+        
+        # Get results from DynamoDB
+        item = get_search_results(search_id)
+        
+        if not item:
+            logger.warning("Search not found | SearchId=%s", search_id)
+            return _error(404, "Search not found", {
+                "code": "SEARCH_NOT_FOUND",
+                "suggestion": "The search may have expired or the searchId is invalid"
+            })
+        
+        status = item.get("status")
+        
+        # If processing, return minimal response
+        if status == "processing":
+            return _ok({
+                "searchId": search_id,
+                "status": "processing"
+            })
+        
+        # If error, return error details
+        if status == "error":
+            error_msg = item.get("error", "Search processing failed")
+            return _error(500, error_msg, {
+                "code": "SEARCH_ERROR",
+                "searchId": search_id
+            })
+        
+        # If complete, enrich and return results
+        if status == "complete":
+            llm_response = item.get("llmResponse", {})
+            
+            if not llm_response:
+                logger.error("LLM response missing | SearchId=%s", search_id)
+                return _error(500, "Search results corrupted")
+            
+            # Extract hospital IDs from LLM response
+            hospitals_llm = llm_response.get("hospitals", [])
+            hospital_ids = list(set([h["hospitalId"] for h in hospitals_llm]))
+            
+            logger.info("Enriching hospitals on-the-fly | SearchId=%s | Count=%d", search_id, len(hospital_ids))
+            
+            # Log first hospital structure for debugging
+            if hospitals_llm:
+                first_hospital = hospitals_llm[0]
+                logger.info(
+                    "First hospital structure | HospitalId=%s | HasDoctors=%s | DoctorCount=%d",
+                    first_hospital.get("hospitalId"),
+                    "doctors" in first_hospital,
+                    len(first_hospital.get("doctors", []))
+                )
+                if first_hospital.get("doctors"):
+                    first_doctor = first_hospital["doctors"][0]
+                    logger.info(
+                        "First doctor structure | DoctorId=%s | HasAIReview=%s",
+                        first_doctor.get("doctorId"),
+                        "doctorAIReview" in first_doctor
+                    )
+            
+            # Fetch hospital data and reviews in parallel
+            hospitals_data = {}
+            hospital_reviews = {}
+            
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                futures = {}
+                
+                for hospital_id in hospital_ids:
+                    future = executor.submit(fetch_from_api, "hospitals", "Hospital", hospital_id)
+                    futures[future] = ("hospital", hospital_id)
+                
+                for hospital_id in hospital_ids:
+                    future = executor.submit(fetch_reviews, {"hospitalId": hospital_id, "limit": 2})
+                    futures[future] = ("hospital_reviews", hospital_id)
+                
+                for future in as_completed(futures):
+                    task_type, resource_id = futures[future]
+                    
+                    try:
+                        result = future.result()
+                        
+                        if task_type == "hospital":
+                            hospitals_data[resource_id] = result
+                        elif task_type == "hospital_reviews":
+                            hospital_reviews[resource_id] = result
+                    
+                    except Exception as e:
+                        logger.error(
+                            "Task failed | SearchId=%s | Type=%s | ResourceId=%s | Error=%s",
+                            search_id,
+                            task_type,
+                            resource_id,
+                            str(e)
+                        )
+            
+            # Build enriched hospitals
+            enriched_hospitals = []
+            
+            for hospital_llm in hospitals_llm:
+                hospital_id = hospital_llm["hospitalId"]
+                hospital_data = hospitals_data.get(hospital_id)
+                
+                if not hospital_data:
+                    logger.warning("Hospital data not found | SearchId=%s | HospitalId=%s", search_id, hospital_id)
+                    continue
+                
+                reviews = hospital_reviews.get(hospital_id, [])
+                
+                enriched_hospital = build_enriched_hospital(
+                    hospital_llm,
+                    hospital_data,
+                    reviews,
+                    None  # insurance_id not available here
+                )
+                
+                enriched_hospitals.append(enriched_hospital)
+            
+            logger.info("Hospitals enriched | SearchId=%s | Count=%d", search_id, len(enriched_hospitals))
+            
+            return _ok({
+                "searchId": search_id,
+                "status": "complete",
+                "results": {
+                    "aiSummary": llm_response.get("aiSummary", ""),
+                    "hospitals": enriched_hospitals
+                }
+            })
+        
+        # Unknown status
+        logger.error("Unknown search status | SearchId=%s | Status=%s", search_id, status)
+        return _error(500, "Unknown search status")
+    
+    except Exception as e:
+        logger.exception("Failed to get search status")
+        return _error(500, "Failed to get search status")
+
+
+def get_hospital_doctors(event: dict) -> dict:
+    """
+    Get doctors for a specific hospital (lazy loading).
+    
+    Args:
+        event: API Gateway event with hospitalId and searchId in query parameters
+    
+    Returns:
+        dict: API Gateway response with enriched doctor list
+    """
+    try:
+        # Extract parameters
+        query_params = event.get("queryStringParameters", {}) or {}
+        hospital_id = event.get("pathParameters", {}).get("hospitalId")
+        search_id = query_params.get("searchId")
+        
+        if not hospital_id:
+            return _error(400, "Missing hospitalId")
+        
+        if not search_id:
+            return _error(400, "Missing searchId")
+        
+        logger.info("Getting hospital doctors | HospitalId=%s | SearchId=%s", hospital_id, search_id)
+        
+        # Get search results from DynamoDB
+        item = get_search_results(search_id)
+        
+        if not item or item.get("status") != "complete":
+            return _error(404, "Search not found or not complete")
+        
+        # Get LLM response
+        llm_response = item.get("llmResponse", {})
+        
+        if not llm_response:
+            logger.error("LLM response missing | SearchId=%s", search_id)
+            return _error(500, "Search results corrupted")
+        
+        # Find the hospital in LLM response
+        hospitals_llm = llm_response.get("hospitals", [])
+        hospital_llm = None
+        
+        for h in hospitals_llm:
+            if h.get("hospitalId") == hospital_id:
+                hospital_llm = h
+                break
+        
+        if not hospital_llm:
+            return _error(404, "Hospital not found in search results")
+        
+        # Get doctor IDs and AI reviews from LLM response
+        doctors_llm = hospital_llm.get("doctors", [])
+        doctor_ids = [d["doctorId"] for d in doctors_llm]
+        doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in doctors_llm}
+        
+        if not doctor_ids:
+            logger.info("No doctors found for hospital | HospitalId=%s", hospital_id)
+            return _ok({"doctors": []})
+        
+        logger.info("Fetching doctors | HospitalId=%s | DoctorCount=%d", hospital_id, len(doctor_ids))
+        
+        # Fetch doctor data and reviews in parallel
         doctors_data = {}
-        hospital_reviews = {}
         doctor_reviews = {}
         
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             futures = {}
             
-            # Submit hospital fetch tasks
-            for hospital_id in hospital_ids:
-                future = executor.submit(fetch_from_api, "hospitals", "Hospital", hospital_id)
-                futures[future] = ("hospital", hospital_id)
-            
-            # Submit doctor fetch tasks (LLM-recommended doctors)
-            for doctor_id in llm_doctor_ids:
+            for doctor_id in doctor_ids:
                 future = executor.submit(fetch_from_api, "doctors", "Doctor", doctor_id)
                 futures[future] = ("doctor", doctor_id)
             
-            # Submit review fetch tasks
-            for hospital_id in hospital_ids:
-                future = executor.submit(fetch_reviews, {"hospitalId": hospital_id})
-                futures[future] = ("hospital_reviews", hospital_id)
-            
-            for doctor_id in llm_doctor_ids:
-                future = executor.submit(fetch_reviews, {"doctorId": doctor_id})
+            for doctor_id in doctor_ids:
+                future = executor.submit(fetch_reviews, {"doctorId": doctor_id, "limit": 1})
                 futures[future] = ("doctor_reviews", doctor_id)
             
-            # Collect results
-            completed = 0
-            total = len(futures)
-            
             for future in as_completed(futures):
-                completed += 1
                 task_type, resource_id = futures[future]
                 
                 try:
                     result = future.result()
                     
-                    if task_type == "hospital":
-                        hospitals_data[resource_id] = result
-                    elif task_type == "doctor":
+                    if task_type == "doctor":
                         doctors_data[resource_id] = result
-                    elif task_type == "hospital_reviews":
-                        hospital_reviews[resource_id] = result
                     elif task_type == "doctor_reviews":
                         doctor_reviews[resource_id] = result
-                    
-                    logger.debug(
-                        "Task completed | Progress=%d/%d | Type=%s | ResourceId=%s",
-                        completed,
-                        total,
-                        task_type,
-                        resource_id
-                    )
                 
                 except Exception as e:
                     logger.error(
@@ -876,135 +1407,50 @@ def search_hospitals(event: dict) -> dict:
                         resource_id,
                         str(e)
                     )
-                    # Log additional details for doctor fetch failures
-                    if task_type == "doctor":
-                        logger.error(
-                            "Doctor fetch failed - check if doctor exists in DynamoDB | DoctorId=%s | URL=%s/doctors/%s",
-                            resource_id,
-                            API_GATEWAY_BASE_URL,
-                            resource_id
-                        )
         
-        logger.info(
-            "Data fetching complete | Hospitals=%d | Doctors=%d | HospitalReviews=%d | DoctorReviews=%d",
-            len(hospitals_data),
-            len(doctors_data),
-            len(hospital_reviews),
-            len(doctor_reviews)
-        )
-
-
-        # Step 4: Build enriched response
-        logger.info("STEP 4: Building enriched response")
+        # Build enriched doctor list
+        enriched_doctors = []
         
-        enriched_hospitals = []
-        
-        for hospital_llm in hospitals_llm:
-            hospital_id = hospital_llm["hospitalId"]
+        for doctor_id in doctor_ids:
+            doctor_data = doctors_data.get(doctor_id)
             
-            # Get hospital data
-            hospital_data = hospitals_data.get(hospital_id)
-            if not hospital_data:
-                logger.warning("Hospital data not found | HospitalId=%s", hospital_id)
+            if not doctor_data:
+                logger.warning("Doctor data not found | DoctorId=%s", doctor_id)
                 continue
             
-            # Get reviews for this hospital
-            reviews = hospital_reviews.get(hospital_id, [])
+            reviews = doctor_reviews.get(doctor_id, [])
             
-            # Enrich hospital data
-            enriched_hospital = enrich_hospital_data(
-                hospital_llm,
-                hospital_data,
-                reviews,
-                insurance_id
-            )
+            # Parse qualifications if it's a JSON string
+            qualifications = doctor_data.get("qualifications", [])
+            if isinstance(qualifications, str):
+                try:
+                    qualifications = json.loads(qualifications)
+                except:
+                    qualifications = []
             
-            # Add LLM-recommended doctors
-            top_doctors = []
-            for doctor_llm in hospital_llm.get("doctors", []):
-                doctor_id = doctor_llm["doctorId"]
-                doctor_data = doctors_data.get(doctor_id)
-                
-                if doctor_data:
-                    doctor_reviews_list = doctor_reviews.get(doctor_id, [])
-                    enriched_doctor = enrich_doctor_data(
-                        doctor_llm,
-                        doctor_data,
-                        doctor_reviews_list
-                    )
-                    top_doctors.append(enriched_doctor)
-                    logger.info("Doctor enriched successfully | DoctorId=%s | HospitalId=%s", doctor_id, hospital_id)
-                else:
-                    logger.warning(
-                        "Doctor data not found - skipping | DoctorId=%s | HospitalId=%s | Reason=API fetch failed or returned 404",
-                        doctor_id,
-                        hospital_id
-                    )
+            # Build enriched doctor object with AI review from LLM response
+            enriched_doctor = {
+                "id": doctor_id,
+                "name": doctor_data.get("doctorName", ""),
+                "specialty": doctor_data.get("specialty", "General"),
+                "experience": doctor_data.get("yearsOfExperience", 10),
+                "qualifications": qualifications,
+                "rating": doctor_data.get("rating", 4.0),
+                "reviewCount": len(reviews),  # Calculate from fetched reviews
+                "imageUrl": "/default-doctor.jpg",
+                "aiSummary": doctor_ai_reviews.get(doctor_id, ""),  # Get AI review from LLM response
+                "reviews": reviews[:1]  # First review
+            }
             
-            enriched_hospital["topDoctors"] = top_doctors
-            
-            logger.info(
-                "Hospital enriched | HospitalId=%s | TopDoctors=%d",
-                hospital_id,
-                len(top_doctors)
-            )
-            
-            enriched_hospitals.append(enriched_hospital)
+            enriched_doctors.append(enriched_doctor)
         
-        # Build final response
-        elapsed = time.time() - start_time
+        logger.info("Doctors fetched | HospitalId=%s | Count=%d", hospital_id, len(enriched_doctors))
         
-        response_body = {
-            "success": True,
-            "cached": False,
-            "responseTime": f"{int(elapsed * 1000)}ms",
-            "userIntent": {
-                "category": "general_search",
-                "keywords": query.split()[:5],  # First 5 words
-                "insuranceRequired": bool(insurance_id),
-                "procedureType": "general",
-            },
-            "results": {
-                "totalMatches": len(enriched_hospitals),
-                "hospitals": enriched_hospitals,
-            },
-            "metadata": {
-                "searchId": f"search_{int(time.time())}_{request_id}",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "aiModel": "bedrock-agent",
-                "databaseVersion": "v1.0.0",
-                "totalHospitalsInDatabase": 29,
-                "totalDoctorsInDatabase": 976,
-            },
-        }
-        
-        logger.info("=" * 80)
-        logger.info(
-            "SEARCH REQUEST COMPLETE | RequestId=%s | Duration=%.2fs | Hospitals=%d",
-            request_id,
-            elapsed,
-            len(enriched_hospitals)
-        )
-        logger.info("=" * 80)
-        
-        return _ok(response_body)
-    
-    except json.JSONDecodeError:
-        logger.error("Invalid JSON in request body")
-        return _error(400, "Invalid JSON in request body")
+        return _ok({"doctors": enriched_doctors})
     
     except Exception as e:
-        elapsed = time.time() - start_time
-        logger.exception(
-            "Search request failed | RequestId=%s | Duration=%.2fs",
-            request_id,
-            elapsed
-        )
-        return _error(
-            500,
-            "An unexpected error occurred. Please try again.",
-            {"code": "INTERNAL_ERROR"}
-        )
+        logger.exception("Failed to get hospital doctors")
+        return _error(500, "Failed to get hospital doctors")
 
 
 # ---------------------------------------------------------------------------
@@ -1016,15 +1462,32 @@ def lambda_handler(event: dict, context: Any) -> dict:
     Main Lambda entry point for API Gateway integration.
     
     Routes:
-      POST /search  → search_hospitals
+      POST /search                                    → search_hospitals (initiate async search)
+      GET  /search/{searchId}                         → get_search_status (poll for results)
+      GET  /hospitals/{hospitalId}/doctors            → get_hospital_doctors (lazy load doctors)
+      
+    Async Processing:
+      asyncSearch=True in event                       → process_search_async (background processing)
     
     Args:
-        event: API Gateway event
+        event: API Gateway event or async processing event
         context: Lambda context
     
     Returns:
-        dict: API Gateway response
+        dict: API Gateway response or None for async processing
     """
+    # Check if this is an async search processing invocation
+    if event.get("asyncSearch"):
+        search_id = event.get("searchId")
+        query = event.get("query")
+        customer_id = event.get("customerId")
+        insurance_id = event.get("insuranceId")
+        
+        logger.info("Async search processing invocation | SearchId=%s", search_id)
+        process_search_async(search_id, query, customer_id, insurance_id)
+        return None  # No response needed for async invocation
+    
+    # Regular API Gateway routing
     method = (
         event.get("httpMethod") 
         or event.get("requestContext", {}).get("http", {}).get("method", "")
@@ -1037,9 +1500,17 @@ def lambda_handler(event: dict, context: Any) -> dict:
     
     logger.info("Lambda invoked | Method=%s | Path=%s", method, path)
     
-    # Route to search handler
+    # Route: POST /search - Initiate async search
     if method == "POST" and path.endswith("/search"):
         return search_hospitals(event)
+    
+    # Route: GET /search/{searchId} - Get search status/results
+    if method == "GET" and "/search/" in path and not path.endswith("/search"):
+        return get_search_status(event)
+    
+    # Route: GET /hospitals/{hospitalId}/doctors - Get hospital doctors
+    if method == "GET" and "/hospitals/" in path and path.endswith("/doctors"):
+        return get_hospital_doctors(event)
     
     # Method not allowed
     logger.warning("Method not allowed | Method=%s | Path=%s", method, path)
