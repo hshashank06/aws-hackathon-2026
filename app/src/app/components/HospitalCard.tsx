@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { MapPin, Star, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Hospital } from "../data/mockData";
 import ReactMarkdown from "react-markdown";
 
@@ -222,29 +222,37 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
                 {hospital.reviews.slice(0, 2).map((review) => (
                   <div key={review.id} className="bg-gray-50 rounded p-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`w-3 h-3 ${
-                              i < review.rating
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-gray-300"
-                            }`}
-                          />
-                        ))}
-                      </div>
                       <span className="text-xs font-medium">{review.patientName}</span>
                       {review.verified && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                        <span className="flex items-center gap-0.5 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
                           Verified
                         </span>
                       )}
+                      {review.date && (
+                        <span className="text-xs text-gray-500 ml-auto">{review.date}</span>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-600">{review.treatment}</p>
-                    <div className="text-xs text-gray-500 mt-1 line-clamp-2 prose prose-xs max-w-none">
+                    <p className="text-xs text-gray-600 mb-1">{review.treatment}</p>
+                    <div className="text-xs text-gray-600 line-clamp-2 prose prose-xs max-w-none [&>h1]:text-sm [&>h1]:font-semibold [&>h1]:mb-1 [&>h2]:text-xs [&>h2]:font-semibold [&>h2]:mb-1 [&>h3]:text-xs [&>h3]:font-medium [&>h3]:mb-1 [&>p]:text-xs [&>p]:mb-1">
                       <ReactMarkdown>{review.comment}</ReactMarkdown>
                     </div>
+                    {(review.cost > 0 || review.insuranceCovered > 0) && (
+                      <div className="flex gap-2 mt-2">
+                        {review.cost > 0 && (
+                          <div className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs">
+                            <span className="font-medium">Cost: ₹{review.cost.toLocaleString()}</span>
+                          </div>
+                        )}
+                        {review.insuranceCovered > 0 && (
+                          <div className="bg-green-50 text-green-700 px-2 py-1 rounded text-xs">
+                            <span className="font-medium">Covered: ₹{review.insuranceCovered.toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

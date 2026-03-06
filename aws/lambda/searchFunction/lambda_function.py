@@ -479,8 +479,8 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     formatted_reviews = []
     for review in reviews[:2]:  # Only first 2 reviews
         try:
-            payment = review.get("payment", {})
-            claim = review.get("claim", {})
+            payment = review.get("payment") or {}
+            claim = review.get("claim") or {}
             
             formatted_review = {
                 "id": review.get("reviewId", ""),
