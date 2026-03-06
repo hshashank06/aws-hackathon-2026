@@ -14,6 +14,7 @@ export function HospitalDetail() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDoctorsLoading, setIsDoctorsLoading] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const { getHospitalById, searchId } = useSearch();
 
   useEffect(() => {
@@ -109,6 +110,9 @@ export function HospitalDetail() {
               src={hospital.imageUrl}
               alt={hospital.name}
               className="w-32 h-32 rounded-lg object-cover"
+              onError={(e) => {
+                e.currentTarget.src = "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400";
+              }}
             />
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{hospital.name}</h1>
@@ -147,11 +151,19 @@ export function HospitalDetail() {
               className="bg-white rounded-lg border border-gray-200 p-6"
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">About</h2>
-              <div className="prose max-w-none text-gray-700 mb-4">
+              <div className={`prose max-w-none text-gray-700 mb-4 ${!isDescriptionExpanded ? 'line-clamp-5' : ''}`}>
                 <ReactMarkdown>{hospital.description}</ReactMarkdown>
               </div>
+              {hospital.description && hospital.description.split('\n').length > 5 && (
+                <button
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+                >
+                  {isDescriptionExpanded ? 'Show less' : 'Read more...'}
+                </button>
+              )}
 
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-4 gap-4 mt-4 mb-4">
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-2">
                     <DollarSign className="w-4 h-4" />
@@ -175,6 +187,13 @@ export function HospitalDetail() {
                     <span>Rating</span>
                   </div>
                   <p className="text-lg font-semibold">{hospital.rating}/5.0</p>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-orange-700 text-sm font-medium mb-2">
+                    <Phone className="w-4 h-4" />
+                    <span>Contact</span>
+                  </div>
+                  <p className="text-sm font-semibold">(555) 123-4567</p>
                 </div>
               </div>
 

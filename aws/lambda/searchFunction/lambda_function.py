@@ -145,6 +145,50 @@ def convert_floats_to_decimal(obj: Any) -> Any:
         return obj
 
 
+def deserialize_dynamodb_json(obj: Any) -> Any:
+    """
+    Recursively deserialize DynamoDB JSON format to Python types.
+    Handles: {"S": "value"}, {"N": "123"}, {"L": [...]}, {"M": {...}}, {"NULL": true}
+    
+    Args:
+        obj: Object in DynamoDB JSON format
+    
+    Returns:
+        Deserialized Python object
+    """
+    if isinstance(obj, dict):
+        # Check if this is a DynamoDB type descriptor
+        if len(obj) == 1:
+            type_key = list(obj.keys())[0]
+            value = obj[type_key]
+            
+            if type_key == "S":  # String
+                return value
+            elif type_key == "N":  # Number
+                try:
+                    # Try int first, then float
+                    if "." in value:
+                        return float(value)
+                    return int(value)
+                except:
+                    return value
+            elif type_key == "L":  # List
+                return [deserialize_dynamodb_json(item) for item in value]
+            elif type_key == "M":  # Map
+                return {k: deserialize_dynamodb_json(v) for k, v in value.items()}
+            elif type_key == "NULL":  # Null
+                return None
+            elif type_key == "BOOL":  # Boolean
+                return value
+        
+        # Regular dict - recurse into values
+        return {k: deserialize_dynamodb_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [deserialize_dynamodb_json(item) for item in obj]
+    else:
+        return obj
+
+
 def save_search_results(search_id: str, status: str, llm_response: dict = None, error: str = None) -> None:
     """
     Save search results to DynamoDB.
@@ -201,7 +245,17 @@ def get_search_results(search_id: str) -> dict:
             logger.warning("Search results not found | SearchId=%s", search_id)
             return None
         
-        return response["Item"]
+        item = response["Item"]
+        
+        # Deserialize llmResponse if it's in DynamoDB JSON format
+        if "llmResponse" in item:
+            llm_response = item["llmResponse"]
+            # Check if it's in DynamoDB format (has type descriptors like {"S": "..."})
+            if isinstance(llm_response, dict) and any(k in llm_response for k in ["S", "N", "L", "M", "NULL", "BOOL"]):
+                logger.info("Deserializing DynamoDB JSON format | SearchId=%s", search_id)
+                item["llmResponse"] = deserialize_dynamodb_json(llm_response)
+        
+        return item
     
     except Exception as e:
         logger.error("Failed to get search results | SearchId=%s | Error=%s", search_id, str(e))
