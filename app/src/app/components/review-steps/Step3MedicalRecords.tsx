@@ -9,6 +9,7 @@ import {
 interface Step3Props {
   data: {
     medicalRecordFiles: File[]
+    medicalRecordDocumentIds: string[]
     extractedData: ExtractedMedicalData | null
     surgeryType: string
     hospitalName: string
@@ -63,7 +64,10 @@ export function Step3MedicalRecords({
 
     try {
       // Call AI extraction API
-      const extracted = await extractMedicalData(uploadedFiles)
+      const {
+        extractedData: extracted,
+        documentIds: medicalRecordDocumentIds
+      } = await extractMedicalData(uploadedFiles)
       setExtractedData(extracted)
 
       // Auto-fill form fields
@@ -76,6 +80,7 @@ export function Step3MedicalRecords({
 
       onUpdate({
         medicalRecordFiles: uploadedFiles,
+        medicalRecordDocumentIds,
         extractedData: extracted,
         surgeryType: extracted.surgeryType,
         hospitalName: extracted.hospitalName,

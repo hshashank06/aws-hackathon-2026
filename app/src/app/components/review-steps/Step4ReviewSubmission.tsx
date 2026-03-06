@@ -6,7 +6,8 @@ import {
   DollarSign,
   Building2,
   Stethoscope,
-  User
+  User,
+  Sparkles
 } from "lucide-react"
 import { motion } from "motion/react"
 import { submitReview } from "../../services/reviewApi"
@@ -61,14 +62,39 @@ export function Step4ReviewSubmission({
   )
   const [doctorRating, setDoctorRating] = useState(data.doctorRating || 0)
   const [doctorReview, setDoctorReview] = useState(data.doctorReview || "")
-  const [totalCost, setTotalCost] = useState(data.totalCost || 0)
+  // Autofill cost fields from document extraction if not already set
+  const autoTotalCost: number = allData.payment?.totalBillAmount ?? 0
+  const autoInsuranceCovered: number =
+    allData.claimData?.claimAmountApproved ?? 0
+
+  const [totalCost, setTotalCost] = useState(
+    data.totalCost || autoTotalCost || 0
+  )
   const [insuranceCovered, setInsuranceCovered] = useState(
-    data.insuranceCovered || 0
+    data.insuranceCovered || autoInsuranceCovered || 0
+  )
+  const [totalCostAutofilled, setTotalCostAutofilled] = useState(
+    !data.totalCost && !!autoTotalCost
+  )
+  const [insuranceCoveredAutofilled, setInsuranceCoveredAutofilled] = useState(
+    !data.insuranceCovered && !!autoInsuranceCovered
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [reviewId, setReviewId] = useState("")
+
+  // Sync autofilled cost values back to parent form data on mount
+  useEffect(() => {
+    const updates: any = {}
+    if (!data.totalCost && autoTotalCost) updates.totalCost = autoTotalCost
+    if (!data.insuranceCovered && autoInsuranceCovered)
+      updates.insuranceCovered = autoInsuranceCovered
+    if (Object.keys(updates).length > 0) {
+      onUpdate({ ...data, ...updates })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Doctor selection
   const [selectedDoctorId, setSelectedDoctorId] = useState(data.doctorId || "")
@@ -181,9 +207,11 @@ export function Step4ReviewSubmission({
         break
       case "totalCost":
         setTotalCost(Number(value))
+        setTotalCostAutofilled(false)
         break
       case "insuranceCovered":
         setInsuranceCovered(Number(value))
+        setInsuranceCoveredAutofilled(false)
         break
     }
 
@@ -230,12 +258,23 @@ export function Step4ReviewSubmission({
         allData.surgeryType || allData.diagnosis || "Medical Visit",
       hospitalReview,
       doctorReview: { doctorId: selectedDoctorId, doctorReview },
-      payment: allData.payment ?? {},
+      payment: {
+        ...(allData.payment ?? {}),
+        totalBillAmount: totalCost,
+        amountToBePayed: totalCost - insuranceCovered
+      },
       documentIds: [
         ...(allData.documentIds ?? []),
-        ...(allData.claimDocumentIds ?? [])
+        ...(allData.claimDocumentIds ?? []),
+        ...(allData.medicalRecordDocumentIds ?? [])
       ],
-      claim: allData.hasInsurance ? (allData.claimData ?? null) : null,
+      claim: allData.hasInsurance
+        ? {
+            ...(allData.claimData ?? {}),
+            claimAmountApproved: insuranceCovered,
+            remainingAmountToBePaid: totalCost - insuranceCovered
+          }
+        : null,
       policyId: null,
       extractedData: {
         hospitalName: allData.hospitalName,
@@ -695,8 +734,18 @@ export function Step4ReviewSubmission({
                     handleFieldUpdate("totalCost", e.target.value)
                   }
                   placeholder="e.g., 15000"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    totalCostAutofilled
+                      ? "border-green-400 bg-green-50"
+                      : "border-gray-300"
+                  }`}
                 />
+                {totalCostAutofilled && (
+                  <p className="mt-1 text-xs text-green-700 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Autofilled from hospital bill
+                  </p>
+                )}
               </div>
 
               <div>
@@ -710,8 +759,18 @@ export function Step4ReviewSubmission({
                     handleFieldUpdate("insuranceCovered", e.target.value)
                   }
                   placeholder="e.g., 12000"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    insuranceCoveredAutofilled
+                      ? "border-green-400 bg-green-50"
+                      : "border-gray-300"
+                  }`}
                 />
+                {insuranceCoveredAutofilled && (
+                  <p className="mt-1 text-xs text-green-700 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Autofilled from insurance claim
+                  </p>
+                )}
               </div>
             </div>
 

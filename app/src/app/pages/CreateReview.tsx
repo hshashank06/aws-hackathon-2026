@@ -49,6 +49,7 @@ export function CreateReview() {
 
     // Step 3
     medicalRecordFiles: [] as File[],
+    medicalRecordDocumentIds: [] as string[],
     extractedData: null,
     surgeryType: "",
     hospitalName: "",
@@ -138,6 +139,7 @@ export function CreateReview() {
             <Step3MedicalRecords
               data={{
                 medicalRecordFiles: formData.medicalRecordFiles,
+                medicalRecordDocumentIds: formData.medicalRecordDocumentIds,
                 extractedData: formData.extractedData,
                 surgeryType: formData.surgeryType,
                 hospitalName: formData.hospitalName,

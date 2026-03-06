@@ -72,29 +72,55 @@ function Get-LambdaArn([string]$FunctionName) {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Create HTTP API
+# 1. Create HTTP API (or reuse existing one with the same name)
 # ---------------------------------------------------------------------------
-$apiJson = Invoke-CLI "Creating HTTP API: $ApiName" {
-    aws apigatewayv2 create-api `
-        --name            $ApiName `
-        --protocol-type   HTTP `
-        --cors-configuration "AllowOrigins=*,AllowMethods=GET,POST,PUT,DELETE,OPTIONS,AllowHeaders=Content-Type,Authorization" `
-        --region          $Region `
-        --output          json
+Write-Host "`n>>> Checking for existing HTTP API: $ApiName" -ForegroundColor Cyan
+$existingApis = aws apigatewayv2 get-apis --region $Region --output json | ConvertFrom-Json
+$existingApi  = $existingApis.Items | Where-Object { $_.Name -eq $ApiName } | Select-Object -First 1
+
+if ($existingApi) {
+    $ApiId       = $existingApi.ApiId
+    $ApiEndpoint = $existingApi.ApiEndpoint
+    Write-Host "  Found existing API - reusing it." -ForegroundColor Yellow
+    Write-Host "  API ID       : $ApiId"
+    Write-Host "  API Endpoint : $ApiEndpoint" -ForegroundColor Green
+} else {
+    $apiJson = Invoke-CLI "Creating HTTP API: $ApiName" {
+        aws apigatewayv2 create-api `
+            --name            $ApiName `
+            --protocol-type   HTTP `
+            --cors-configuration "AllowOrigins=*,AllowMethods=GET,POST,PUT,DELETE,OPTIONS,AllowHeaders=Content-Type,Authorization" `
+            --region          $Region `
+            --output          json
+    }
+
+    $api         = $apiJson | ConvertFrom-Json
+    $ApiId       = $api.ApiId
+    $ApiEndpoint = $api.ApiEndpoint
+    Write-Host "  API ID       : $ApiId"
+    Write-Host "  API Endpoint : $ApiEndpoint" -ForegroundColor Green
 }
 
-$api      = $apiJson | ConvertFrom-Json
-$ApiId    = $api.ApiId
-$ApiEndpoint = $api.ApiEndpoint
-Write-Host "  API ID       : $ApiId"
-Write-Host "  API Endpoint : $ApiEndpoint" -ForegroundColor Green
+# ---------------------------------------------------------------------------
+# 2. Create Lambda integrations (one per function, skip if already exists)
+# ---------------------------------------------------------------------------
+$_existingIntegrations = $null
+function Get-ExistingIntegrations {
+    if ($null -eq $script:_existingIntegrations) {
+        $script:_existingIntegrations = (aws apigatewayv2 get-integrations --api-id $ApiId --region $Region --output json | ConvertFrom-Json).Items
+    }
+    return $script:_existingIntegrations
+}
 
-# ---------------------------------------------------------------------------
-# 2. Create Lambda integrations (one per function)
-# ---------------------------------------------------------------------------
 function New-LambdaIntegration([string]$FunctionName) {
     $arn = Get-LambdaArn $FunctionName
     $uri = "arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${arn}/invocations"
+
+    $existing = Get-ExistingIntegrations | Where-Object { $_.IntegrationUri -eq $uri } | Select-Object -First 1
+    if ($existing) {
+        Write-Host "`n>>> Integration already exists for $FunctionName ($($existing.IntegrationId))" -ForegroundColor Yellow
+        return $existing.IntegrationId
+    }
 
     $intJson = Invoke-CLI "Creating integration for $FunctionName" {
         aws apigatewayv2 create-integration `
@@ -126,14 +152,28 @@ Write-Host "  InsurancePolicy  : $intInsurancePolicy"
 Write-Host "  Review           : $intReview"
 
 # ---------------------------------------------------------------------------
-# 3. Create routes
+# 3. Create routes (skip if already exists)
 # ---------------------------------------------------------------------------
+$_existingRoutes = $null
+function Get-ExistingRoutes {
+    if ($null -eq $script:_existingRoutes) {
+        $script:_existingRoutes = (aws apigatewayv2 get-routes --api-id $ApiId --region $Region --output json | ConvertFrom-Json).Items
+    }
+    return $script:_existingRoutes
+}
+
 function New-Route([string]$Method, [string]$RouteKey, [string]$IntegrationId) {
+    $fullRouteKey = "$Method $RouteKey"
+    $existing = Get-ExistingRoutes | Where-Object { $_.RouteKey -eq $fullRouteKey } | Select-Object -First 1
+    if ($existing) {
+        Write-Host "`n>>> Route already exists: $fullRouteKey" -ForegroundColor Yellow
+        return
+    }
     $target = "integrations/$IntegrationId"
-    Invoke-CLI "Route: $Method $RouteKey" {
+    Invoke-CLI "Route: $fullRouteKey" {
         aws apigatewayv2 create-route `
             --api-id        $ApiId `
-            --route-key     "$Method $RouteKey" `
+            --route-key     "$fullRouteKey" `
             --target        $target `
             --region        $Region `
             --output        json
@@ -183,8 +223,11 @@ New-Route "PUT"    "/insurance-policies/{policyId}"    $intInsurancePolicy
 New-Route "DELETE" "/insurance-policies/{policyId}"    $intInsurancePolicy
 
 # --- Reviews ---
-New-Route "POST"   "/reviews/presign"           $intReview
+New-Route "POST"   "/reviews/presign"                  $intReview
 New-Route "POST"   "/reviews/process-document"         $intReview
+New-Route "GET"    "/reviews/documents"                $intReview
+New-Route "GET"    "/reviews/documents/download"       $intReview
+New-Route "DELETE" "/reviews/documents"                $intReview
 New-Route "POST"   "/reviews"                          $intReview
 New-Route "GET"    "/reviews"                          $intReview
 New-Route "GET"    "/reviews/{reviewId}"               $intReview
@@ -192,23 +235,39 @@ New-Route "PUT"    "/reviews/{reviewId}"               $intReview
 New-Route "DELETE" "/reviews/{reviewId}"               $intReview
 
 # ---------------------------------------------------------------------------
-# 4. Create auto-deployed stage
+# 4. Create auto-deployed stage (skip if already exists)
 # ---------------------------------------------------------------------------
-Invoke-CLI "Creating stage: $StageName" {
-    aws apigatewayv2 create-stage `
-        --api-id        $ApiId `
-        --stage-name    $StageName `
-        --auto-deploy `
-        --region        $Region `
-        --output        json
-} | Out-Null
+$existingStages = (aws apigatewayv2 get-stages --api-id $ApiId --region $Region --output json | ConvertFrom-Json).Items
+if ($existingStages | Where-Object { $_.StageName -eq $StageName }) {
+    Write-Host "`n>>> Stage '$StageName' already exists - skipping." -ForegroundColor Yellow
+} else {
+    Invoke-CLI "Creating stage: $StageName" {
+        aws apigatewayv2 create-stage `
+            --api-id        $ApiId `
+            --stage-name    $StageName `
+            --auto-deploy `
+            --region        $Region `
+            --output        json
+    } | Out-Null
+}
 
 # ---------------------------------------------------------------------------
-# 5. Grant API Gateway permission to invoke each Lambda function
+# 5. Grant API Gateway permission to invoke each Lambda function (idempotent)
 # ---------------------------------------------------------------------------
 function Add-LambdaPermission([string]$FunctionName) {
-    $sourceArn = "arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*/*"
-    $statementId = "apigw-invoke-$FunctionName-$(Get-Random -Maximum 9999)"
+    $sourceArn   = "arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*/*"
+    $statementId = "apigw-invoke-$FunctionName"
+
+    # Check if the statement already exists
+    $policy = aws lambda get-policy --function-name $FunctionName --region $Region --output json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $policy) {
+        $policyObj = $policy | ConvertFrom-Json
+        $statements = ($policyObj.Policy | ConvertFrom-Json).Statement
+        if ($statements | Where-Object { $_.Sid -eq $statementId }) {
+            Write-Host "`n>>> Lambda permission already exists for $FunctionName - skipping." -ForegroundColor Yellow
+            return
+        }
+    }
 
     Invoke-CLI "Lambda invoke permission: $FunctionName" {
         aws lambda add-permission `
@@ -253,5 +312,6 @@ Write-Host "   GET  $ApiEndpoint/insurance-companies"
 Write-Host "   GET  $ApiEndpoint/insurance-policies"
 Write-Host "   POST $ApiEndpoint/reviews/presign"
 Write-Host "   POST $ApiEndpoint/reviews/process-document"
+Write-Host "   GET  $ApiEndpoint/reviews/documents/download"
 Write-Host "   GET  $ApiEndpoint/reviews"
 Write-Host "   GET  $ApiEndpoint/reviews/{reviewId}"
