@@ -77,8 +77,18 @@ function adaptEnrichedDoctorToDoctor(enriched: any): Doctor {
  * Step 1: Initiate search and get searchId
  */
 async function initiateSearch(query: string, customerId?: string): Promise<{ searchId: string; status: string }> {
+  // If query doesn't mention a location, append "in Hyderabad" as default
+  let enhancedQuery = query;
+  const hasLocation = /\b(in|near|at|around)\s+\w+/i.test(query) || 
+                      /hyderabad|bangalore|mumbai|delhi|chennai|kolkata/i.test(query);
+  
+  if (!hasLocation) {
+    enhancedQuery = `${query} in Hyderabad`;
+    console.log(`[API] No location detected, enhanced query: "${enhancedQuery}"`);
+  }
+
   const requestBody = {
-    query,
+    query: enhancedQuery,
     customerId: customerId || "anonymous",
     userContext: {},
   };

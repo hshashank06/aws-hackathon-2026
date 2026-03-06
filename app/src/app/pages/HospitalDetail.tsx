@@ -451,19 +451,23 @@ export function HospitalDetail() {
                   return (
                     <div key={review.id} className="border-b border-gray-200 last:border-0 pb-4 last:pb-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="flex">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i < review.rating
-                                  ? "fill-yellow-400 text-yellow-400"
-                                  : "text-gray-300"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <span className="font-medium text-gray-900">{review.patientName}</span>
+                        {review.rating != null && review.rating > 0 && (
+                          <div className="flex">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-4 h-4 ${
+                                  i < (review.rating || 0)
+                                    ? "fill-yellow-400 text-yellow-400"
+                                    : "text-gray-300"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {review.patientName && review.patientName !== "Anonymous" && (
+                          <span className="font-medium text-gray-900">{review.patientName}</span>
+                        )}
                         {review.verified && (
                           <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
                             Verified Patient

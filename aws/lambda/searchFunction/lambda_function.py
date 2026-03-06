@@ -551,10 +551,18 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
             payment = review.get("payment") or {}
             claim = review.get("claim") or {}
             
+            # Get rating from backend, use None if not present (will hide stars in UI)
+            rating = review.get("overallRating")
+            if rating is not None:
+                try:
+                    rating = int(rating)
+                except (ValueError, TypeError):
+                    rating = None
+            
             formatted_review = {
                 "id": review.get("reviewId", ""),
-                "patientName": review.get("customerName", "Anonymous"),
-                "rating": review.get("overallRating", 4),
+                "patientName": review.get("customerName", ""),  # Empty string if not present
+                "rating": rating,  # None if not present - UI will hide stars
                 "date": review.get("createdAt", "")[:10] if review.get("createdAt") else "",  # Extract date part
                 "treatment": review.get("procedureType", "General Treatment"),
                 "cost": clean_currency_value(payment.get("totalBillAmount")),
