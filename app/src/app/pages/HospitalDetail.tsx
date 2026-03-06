@@ -15,7 +15,30 @@ export function HospitalDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDoctorsLoading, setIsDoctorsLoading] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(new Set());
   const { getHospitalById, searchId } = useSearch();
+
+  const toggleReviewExpansion = (reviewId: string) => {
+    setExpandedReviews(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(reviewId)) {
+        newSet.delete(reviewId);
+      } else {
+        newSet.add(reviewId);
+      }
+      return newSet;
+    });
+  };
+
+  const truncateReview = (text: string, maxSentences: number = 4) => {
+    // Split by sentence endings (., !, ?)
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    if (sentences.length <= maxSentences) {
+      return { truncated: text, needsTruncation: false };
+    }
+    const truncated = sentences.slice(0, maxSentences).join(' ');
+    return { truncated, needsTruncation: true };
+  };
 
   useEffect(() => {
     async function fetchHospital() {
@@ -74,13 +97,25 @@ export function HospitalDetail() {
                   const aiReview = doctorAIReviews[doctorId] || "";
                   console.log(`[HospitalDetail] Doctor ${doctorId} AI review:`, aiReview ? "Found" : "EMPTY");
                   
-                  // Parse qualifications if it's a string
-                  let qualifications = doctorData.qualifications || [];
-                  if (typeof qualifications === 'string') {
-                    // Split by comma and trim whitespace
-                    qualifications = qualifications.split(',').map((q: string) => q.trim()).filter((q: string) => q);
-                  } else if (!Array.isArray(qualifications)) {
-                    qualifications = [];
+                  // Extract qualifications from 'about' field since Doctor table doesn't have qualifications field
+                  const qualifications: string[] = [];
+                  const about = doctorData.about || "";
+                  
+                  // Look for common qualification patterns in the about text
+                  const qualMatches = about.match(/\b(MBBS|MD|MS|MCh|DM|DNB|FRCS|MRCP|PhD|Fellowship|Board Certified)\b/gi);
+                  if (qualMatches && qualMatches.length > 0) {
+                    // Remove duplicates and limit to first 5
+                    const seen = new Set<string>();
+                    for (const qual of qualMatches) {
+                      const upper = qual.toUpperCase();
+                      if (!seen.has(upper) && qualifications.length < 5) {
+                        seen.add(upper);
+                        qualifications.push(upper);
+                      }
+                    }
+                    console.log(`[HospitalDetail] Extracted qualifications for ${doctorId}:`, qualifications);
+                  } else {
+                    console.log(`[HospitalDetail] No qualifications found in about text for ${doctorId}`);
                   }
                   
                   // Transform to UI format
@@ -92,7 +127,7 @@ export function HospitalDetail() {
                     qualifications: qualifications,
                     rating: doctorData.rating || 4.5,
                     reviewCount: reviewCount,  // Use fetched review count
-                    imageUrl: "/default-doctor.jpg",
+                    imageUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200",  // Use real image URL
                     aiSummary: aiReview, // Use AI review from hospital object
                     reviews: [],
                   };
@@ -339,53 +374,67 @@ export function HospitalDetail() {
             >
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Patient Reviews</h2>
               <div className="space-y-4">
-                {hospital.reviews.map((review) => (
-                  <div key={review.id} className="border-b border-gray-200 last:border-0 pb-4 last:pb-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`w-4 h-4 ${
-                              i < review.rating
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-gray-300"
-                            }`}
-                          />
-                        ))}
+                {hospital.reviews.map((review) => {
+                  const isExpanded = expandedReviews.has(review.id);
+                  const { truncated, needsTruncation } = truncateReview(review.comment);
+                  const displayText = isExpanded ? review.comment : truncated;
+                  
+                  return (
+                    <div key={review.id} className="border-b border-gray-200 last:border-0 pb-4 last:pb-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={`w-4 h-4 ${
+                                i < review.rating
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "text-gray-300"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-medium text-gray-900">{review.patientName}</span>
+                        {review.verified && (
+                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
+                            Verified Patient
+                          </span>
+                        )}
+                        <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
                       </div>
-                      <span className="font-medium text-gray-900">{review.patientName}</span>
-                      {review.verified && (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium">
-                          Verified Patient
-                        </span>
+                      <p className="font-medium text-gray-900 mb-2">{review.treatment}</p>
+                      <div className="text-gray-700 mb-2 prose prose-sm max-w-none">
+                        <ReactMarkdown>{displayText}</ReactMarkdown>
+                      </div>
+                      {needsTruncation && (
+                        <button
+                          onClick={() => toggleReviewExpansion(review.id)}
+                          className="text-blue-600 hover:text-blue-700 font-medium text-sm mb-3"
+                        >
+                          {isExpanded ? 'Show less' : 'Read more...'}
+                        </button>
                       )}
-                      <span className="text-sm text-gray-500 ml-auto">{review.date}</span>
-                    </div>
-                    <p className="font-medium text-gray-900 mb-2">{review.treatment}</p>
-                    <div className="text-gray-700 mb-3 prose prose-sm max-w-none">
-                      <ReactMarkdown>{review.comment}</ReactMarkdown>
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <div className="bg-gray-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Total Cost: </span>
-                        <span className="font-semibold">₹{review.cost.toLocaleString()}</span>
-                      </div>
-                      <div className="bg-green-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Insurance Covered: </span>
-                        <span className="font-semibold text-green-700">
-                          ₹{review.insuranceCovered.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="bg-blue-50 px-3 py-2 rounded">
-                        <span className="text-gray-600">Out of Pocket: </span>
-                        <span className="font-semibold text-blue-700">
-                          ₹{(review.cost - review.insuranceCovered).toLocaleString()}
-                        </span>
+                      <div className="flex gap-4 text-sm">
+                        <div className="bg-gray-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Total Cost: </span>
+                          <span className="font-semibold">₹{review.cost.toLocaleString()}</span>
+                        </div>
+                        <div className="bg-green-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Insurance Covered: </span>
+                          <span className="font-semibold text-green-700">
+                            ₹{review.insuranceCovered.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="bg-blue-50 px-3 py-2 rounded">
+                          <span className="text-gray-600">Out of Pocket: </span>
+                          <span className="font-semibold text-blue-700">
+                            ₹{(review.cost - review.insuranceCovered).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           </div>
