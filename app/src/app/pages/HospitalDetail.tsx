@@ -77,22 +77,42 @@ export function HospitalDetail() {
                       );
                       if (response.ok) {
                         const data = await response.json();
-                        return data.insuranceCompanyName || insuranceId;
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} full response:`, JSON.stringify(data, null, 2));
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} name field:`, data.insuranceCompanyName);
+                        console.log(`[HospitalDetail] Insurance ${insuranceId} all keys:`, Object.keys(data));
+                        // Return the name, or null if name is not available
+                        return data.insuranceCompanyName || data.name || null;
+                      } else {
+                        const errorText = await response.text();
+                        console.warn(`[HospitalDetail] Failed to fetch insurance ${insuranceId}: ${response.status}`, errorText);
+                        return null; // Return null for failed fetches
                       }
-                      return insuranceId;
                     } catch (error) {
                       console.error(`Failed to fetch insurance ${insuranceId}:`, error);
-                      return insuranceId;
+                      return null; // Return null for errors
                     }
                   });
                   
-                  const insuranceNames = await Promise.all(insurancePromises);
+                  const insuranceResults = await Promise.all(insurancePromises);
+                  // Filter out null values (failed fetches)
+                  const insuranceNames = insuranceResults.filter((name): name is string => name !== null);
                   console.log("[HospitalDetail] Fetched insurance names:", insuranceNames);
-                  setAcceptedInsurance(insuranceNames);
+                  
+                  if (insuranceNames.length > 0) {
+                    setAcceptedInsurance(insuranceNames);
+                  } else {
+                    // If all fetches failed, use defaults
+                    console.log("[HospitalDetail] All insurance fetches failed, using defaults");
+                    setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
+                  }
                 } else {
+                  console.log("[HospitalDetail] No insurance IDs found, using defaults");
                   // Fallback to default list
                   setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
                 }
+              } else {
+                console.warn("[HospitalDetail] Failed to fetch hospital data:", hospitalResponse.status);
+                setAcceptedInsurance(["Blue Cross", "United Health", "Aetna", "Medicare"]);
               }
             } catch (error) {
               console.error("[HospitalDetail] Failed to fetch insurance companies:", error);
