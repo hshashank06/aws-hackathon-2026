@@ -529,6 +529,9 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     # Extract doctor IDs from LLM response
     top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]
     
+    # Create a mapping of doctorId -> AI review
+    doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in hospital_llm.get("doctors", [])}
+    
     # Format reviews for UI
     formatted_reviews = []
     for review in reviews[:2]:  # Only first 2 reviews
@@ -572,6 +575,7 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
         "reviews": formatted_reviews,  # Formatted reviews for UI
         "doctors": [],  # Empty - will be lazy loaded
         "topDoctorIds": top_doctor_ids,  # For lazy loading
+        "doctorAIReviews": doctor_ai_reviews,  # AI reviews for each doctor
         "acceptedInsurance": ["Blue Cross", "United Health", "Aetna", "Medicare"]  # Default
     }
 
@@ -1403,7 +1407,7 @@ def get_hospital_doctors(event: dict) -> dict:
                 "experience": doctor_data.get("yearsOfExperience", 10),
                 "qualifications": qualifications,
                 "rating": doctor_data.get("rating", 4.0),
-                "reviewCount": doctor_data.get("reviewCount", 0),
+                "reviewCount": len(reviews),  # Calculate from fetched reviews
                 "imageUrl": "/default-doctor.jpg",
                 "aiSummary": doctor_ai_reviews.get(doctor_id, ""),  # Get AI review from LLM response
                 "reviews": reviews[:1]  # First review

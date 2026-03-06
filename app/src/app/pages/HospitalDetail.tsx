@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { Hospital, Doctor } from "../data/mockData";
-import { getHospitalByIdAPI, getHospitalDoctorsAPI } from "../services/api";
+import { getHospitalByIdAPI } from "../services/api";
 import { DoctorCard } from "../components/DoctorCard";
 import ReactMarkdown from "react-markdown";
 import { useSearch } from "../contexts/SearchContext";
@@ -33,20 +33,54 @@ export function HospitalDetail() {
           // Check if hospital has topDoctorIds - these are the doctor IDs from LLM
           if (contextHospital.topDoctorIds && contextHospital.topDoctorIds.length > 0) {
             console.log("[HospitalDetail] Found topDoctorIds:", contextHospital.topDoctorIds);
+            console.log("[HospitalDetail] doctorAIReviews:", contextHospital.doctorAIReviews);
             setIsDoctorsLoading(true);
             
             try {
+              // Get doctor AI reviews from the hospital object
+              const doctorAIReviews = contextHospital.doctorAIReviews || {};
+              console.log("[HospitalDetail] Using doctorAIReviews mapping:", doctorAIReviews);
+              
               // Fetch each doctor's details from the Doctor API
               const doctorPromises = contextHospital.topDoctorIds.map(async (doctorId: string) => {
                 try {
-                  const response = await fetch(
+                  // Fetch doctor data
+                  const doctorResponse = await fetch(
                     `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors/${doctorId}`
                   );
-                  if (!response.ok) {
+                  if (!doctorResponse.ok) {
                     console.error(`Failed to fetch doctor ${doctorId}`);
                     return null;
                   }
-                  const doctorData = await response.json();
+                  const doctorData = await doctorResponse.json();
+                  
+                  // Fetch doctor reviews to get review count
+                  let reviewCount = 0;
+                  try {
+                    const reviewsResponse = await fetch(
+                      `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/reviews?doctorId=${doctorId}&limit=100`
+                    );
+                    if (reviewsResponse.ok) {
+                      const reviewsData = await reviewsResponse.json();
+                      reviewCount = reviewsData.count || 0;
+                      console.log(`[HospitalDetail] Doctor ${doctorId} has ${reviewCount} reviews`);
+                    }
+                  } catch (error) {
+                    console.warn(`Failed to fetch reviews for doctor ${doctorId}:`, error);
+                  }
+                  
+                  // Get AI review for this doctor
+                  const aiReview = doctorAIReviews[doctorId] || "";
+                  console.log(`[HospitalDetail] Doctor ${doctorId} AI review:`, aiReview ? "Found" : "EMPTY");
+                  
+                  // Parse qualifications if it's a string
+                  let qualifications = doctorData.qualifications || [];
+                  if (typeof qualifications === 'string') {
+                    // Split by comma and trim whitespace
+                    qualifications = qualifications.split(',').map((q: string) => q.trim()).filter((q: string) => q);
+                  } else if (!Array.isArray(qualifications)) {
+                    qualifications = [];
+                  }
                   
                   // Transform to UI format
                   return {
@@ -54,13 +88,11 @@ export function HospitalDetail() {
                     name: doctorData.doctorName || "Unknown Doctor",
                     specialty: doctorData.specialty || "General",
                     experience: doctorData.yearsOfExperience || 10,
-                    qualifications: Array.isArray(doctorData.qualifications) 
-                      ? doctorData.qualifications 
-                      : [],
+                    qualifications: qualifications,
                     rating: doctorData.rating || 4.5,
-                    reviewCount: doctorData.reviewCount || 0,
+                    reviewCount: reviewCount,  // Use fetched review count
                     imageUrl: "/default-doctor.jpg",
-                    aiSummary: "", // Will be populated from LLM response if available
+                    aiSummary: aiReview, // Use AI review from hospital object
                     reviews: [],
                   };
                 } catch (error) {
@@ -71,6 +103,7 @@ export function HospitalDetail() {
               
               const fetchedDoctors = (await Promise.all(doctorPromises)).filter(d => d !== null);
               console.log("[HospitalDetail] Fetched doctors:", fetchedDoctors.length);
+              console.log("[HospitalDetail] Doctors with AI reviews:", fetchedDoctors.filter(d => d.aiSummary).length);
               setDoctors(fetchedDoctors);
             } catch (error) {
               console.error("[HospitalDetail] Failed to fetch doctors:", error);

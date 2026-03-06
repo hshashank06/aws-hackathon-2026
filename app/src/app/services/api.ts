@@ -50,6 +50,7 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
       ? enriched.insuranceCoveragePercent 
       : 0,
     topDoctorIds: Array.isArray(enriched.topDoctorIds) ? enriched.topDoctorIds : [],
+    doctorAIReviews: enriched.doctorAIReviews || {},
   };
 }
 
