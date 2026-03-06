@@ -47,6 +47,12 @@ export interface Hospital {
   insuranceCoveragePercent?: number;
   topDoctorIds?: string[];  // Doctor IDs for lazy loading
   doctorAIReviews?: Record<string, string>;  // Map of doctorId -> AI review
+  // Location and distance fields
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  distance?: number;  // Distance in km
 }
 
 export const mockHospitals: Hospital[] = [

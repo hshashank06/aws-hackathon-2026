@@ -43,6 +43,7 @@ export interface UserIntent {
 export interface SearchResults {
   totalMatches: number;
   hospitals: EnrichedHospital[];
+  aiSummary?: string;
 }
 
 // ========================================================================
@@ -91,6 +92,12 @@ export interface HospitalLocation {
   latitude: number;
   longitude: number;
   distance?: number; // km from user
+}
+
+// Additional fields for UI compatibility
+export interface EnrichedHospitalExtended extends EnrichedHospital {
+  coordinates?: { latitude: number; longitude: number };
+  distance?: number;
 }
 
 export interface AIInsights {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { MapPin, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { MapPin, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp, Star, Navigation } from "lucide-react";
 import { Hospital } from "../data/mockData";
 import ReactMarkdown from "react-markdown";
 
@@ -78,10 +78,18 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
       animate={{ opacity: 1, y: 0 }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`bg-white rounded-lg border-2 transition-all ${
+      className={`bg-white rounded-lg border-2 transition-all relative ${
         isHovered ? "border-blue-500 shadow-lg" : "border-gray-200 shadow-sm"
       }`}
     >
+      {/* Distance Badge - Top Right */}
+      {hospital.distance != null && (
+        <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-1 shadow-md">
+          <Navigation className="w-3.5 h-3.5" />
+          {hospital.distance.toFixed(1)} km
+        </div>
+      )}
+      
       <div className="p-6">
         {/* Header Section */}
         <Link to={`/hospital/${hospital.id}`} className="block">

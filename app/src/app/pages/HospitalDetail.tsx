@@ -1,10 +1,11 @@
 import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { motion } from "motion/react";
 import { Hospital, Doctor } from "../data/mockData";
 import { getHospitalByIdAPI } from "../services/api";
 import { DoctorCard } from "../components/DoctorCard";
+import { HospitalMap } from "../components/HospitalMap";
 import ReactMarkdown from "react-markdown";
 import { useSearch } from "../contexts/SearchContext";
 
@@ -17,7 +18,25 @@ export function HospitalDetail() {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(new Set());
   const [acceptedInsurance, setAcceptedInsurance] = useState<string[]>([]);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const { getHospitalById, searchId } = useSearch();
+
+  // Get user location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.warn("Failed to get user location:", error);
+        }
+      );
+    }
+  }, []);
 
   const toggleReviewExpansion = (reviewId: string) => {
     setExpandedReviews(prev => {
@@ -521,10 +540,53 @@ export function HospitalDetail() {
           {/* Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
+              {/* Location & Map */}
+              {hospital.coordinates && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="bg-white rounded-lg border border-gray-200 p-6"
+                >
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-blue-600" />
+                    Location & Directions
+                  </h3>
+                  
+                  {/* Map Container */}
+                  <div className="h-64 rounded-lg overflow-hidden mb-3 border">
+                    <HospitalMap
+                      userLocation={userLocation || undefined}
+                      hospitalLocation={hospital.coordinates}
+                      hospitalName={hospital.name}
+                    />
+                  </div>
+                  
+                  {/* Distance Info */}
+                  {hospital.distance && (
+                    <div className="text-sm space-y-2 mb-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Distance:</span>
+                        <span className="font-semibold">{hospital.distance.toFixed(1)} km</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Est. Time:</span>
+                        <span className="font-semibold">{Math.ceil(hospital.distance / 0.5)} min</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2">
+                    <Navigation className="w-4 h-4" />
+                    Get Directions
+                  </button>
+                </motion.div>
+              )}
+
               {/* Insurance Accepted */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
                 className="bg-white rounded-lg border border-gray-200 p-6"
               >
                 <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">

@@ -73,10 +73,45 @@ function adaptEnrichedDoctorToDoctor(enriched: any): Doctor {
 }
 
 /**
+ * Get user's current location using browser geolocation API
+ */
+async function getUserLocation(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      console.warn("[API] Geolocation not supported");
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        console.log("[API] User location obtained:", location);
+        resolve(location);
+      },
+      (error) => {
+        console.warn("[API] Failed to get user location:", error.message);
+        resolve(null); // Don't fail the search if location is unavailable
+      },
+      {
+        timeout: 5000,
+        maximumAge: 300000, // Cache for 5 minutes
+      }
+    );
+  });
+}
+
+/**
  * Call the real Lambda search endpoint (async flow)
  * Step 1: Initiate search and get searchId
  */
 async function initiateSearch(query: string, customerId?: string): Promise<{ searchId: string; status: string }> {
+  // Get user location
+  const userLocation = await getUserLocation();
+  
   // If query doesn't mention a location, append "in Hyderabad" as default
   let enhancedQuery = query;
   const hasLocation = /\b(in|near|at|around)\s+\w+/i.test(query) || 
@@ -90,7 +125,9 @@ async function initiateSearch(query: string, customerId?: string): Promise<{ sea
   const requestBody = {
     query: enhancedQuery,
     customerId: customerId || "anonymous",
-    userContext: {},
+    userContext: {
+      location: userLocation, // Pass user location to backend
+    },
   };
 
   console.log(`[API] Initiating search: ${SEARCH_ENDPOINT}`);
@@ -149,10 +186,21 @@ async function pollSearchStatus(searchId: string, maxAttempts: number = 30): Pro
       
       return {
         success: true,
+        cached: false,
+        responseTime: "0ms",
+        userIntent: {
+          category: "hospital_search",
+          keywords: [],
+        },
         results: {
           aiSummary: data.results.aiSummary || "",
           hospitals: data.results.hospitals || [],
           totalMatches: (data.results.hospitals || []).length,
+        },
+        metadata: {
+          searchId: searchId,
+          timestamp: new Date().toISOString(),
+          aiModel: "bedrock",
         },
       };
     }
