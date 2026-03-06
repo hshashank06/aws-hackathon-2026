@@ -45,6 +45,7 @@ export interface Hospital {
   verificationBadge?: string;
   claimApprovalRate?: number;
   insuranceCoveragePercent?: number;
+  topDoctorIds?: string[];  // Doctor IDs for lazy loading
 }
 
 export const mockHospitals: Hospital[] = [

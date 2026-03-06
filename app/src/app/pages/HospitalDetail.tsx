@@ -30,11 +30,47 @@ export function HospitalDetail() {
           console.log("[HospitalDetail] Found hospital in search context");
           setHospital(contextHospital);
           
-          // Fetch doctors from real API if we have a searchId
-          if (searchId) {
+          // Check if hospital has topDoctorIds - these are the doctor IDs from LLM
+          if (contextHospital.topDoctorIds && contextHospital.topDoctorIds.length > 0) {
+            console.log("[HospitalDetail] Found topDoctorIds:", contextHospital.topDoctorIds);
             setIsDoctorsLoading(true);
+            
             try {
-              const fetchedDoctors = await getHospitalDoctorsAPI(id, searchId);
+              // Fetch each doctor's details from the Doctor API
+              const doctorPromises = contextHospital.topDoctorIds.map(async (doctorId: string) => {
+                try {
+                  const response = await fetch(
+                    `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors/${doctorId}`
+                  );
+                  if (!response.ok) {
+                    console.error(`Failed to fetch doctor ${doctorId}`);
+                    return null;
+                  }
+                  const doctorData = await response.json();
+                  
+                  // Transform to UI format
+                  return {
+                    id: doctorData.doctorId,
+                    name: doctorData.doctorName || "Unknown Doctor",
+                    specialty: doctorData.specialty || "General",
+                    experience: doctorData.yearsOfExperience || 10,
+                    qualifications: Array.isArray(doctorData.qualifications) 
+                      ? doctorData.qualifications 
+                      : [],
+                    rating: doctorData.rating || 4.5,
+                    reviewCount: doctorData.reviewCount || 0,
+                    imageUrl: "/default-doctor.jpg",
+                    aiSummary: "", // Will be populated from LLM response if available
+                    reviews: [],
+                  };
+                } catch (error) {
+                  console.error(`Error fetching doctor ${doctorId}:`, error);
+                  return null;
+                }
+              });
+              
+              const fetchedDoctors = (await Promise.all(doctorPromises)).filter(d => d !== null);
+              console.log("[HospitalDetail] Fetched doctors:", fetchedDoctors.length);
               setDoctors(fetchedDoctors);
             } catch (error) {
               console.error("[HospitalDetail] Failed to fetch doctors:", error);
@@ -43,7 +79,7 @@ export function HospitalDetail() {
               setIsDoctorsLoading(false);
             }
           } else {
-            console.warn("[HospitalDetail] No searchId available, cannot fetch doctors");
+            console.warn("[HospitalDetail] No topDoctorIds available");
             setDoctors([]);
           }
         } else {

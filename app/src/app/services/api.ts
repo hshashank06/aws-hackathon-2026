@@ -49,6 +49,7 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
     insuranceCoveragePercent: typeof enriched.insuranceCoveragePercent === 'number' 
       ? enriched.insuranceCoveragePercent 
       : 0,
+    topDoctorIds: Array.isArray(enriched.topDoctorIds) ? enriched.topDoctorIds : [],
   };
 }
 
