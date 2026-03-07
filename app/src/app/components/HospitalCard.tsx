@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { MapPin, DollarSign, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp, Star, Navigation } from "lucide-react";
+import { MapPin, IndianRupee, Shield, ChevronRight, CheckCircle, ChevronDown, ChevronUp, Star, Navigation } from "lucide-react";
 import { Hospital } from "../data/mockData";
 import ReactMarkdown from "react-markdown";
 
@@ -174,7 +174,7 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-blue-50 rounded-lg p-3">
               <div className="flex items-center gap-1 text-blue-700 text-xs font-medium mb-1">
-                <DollarSign className="w-3 h-3" />
+                <IndianRupee className="w-3 h-3" />
                 <span>Avg. Cost Range</span>
               </div>
               <p className="text-sm font-semibold">

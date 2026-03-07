@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { ArrowLeft, MapPin, Star, DollarSign, Shield, Phone, Clock, ChevronRight, CheckCircle, XCircle, Navigation } from "lucide-react";
+import { ArrowLeft, MapPin, Star, IndianRupee, Shield, Phone, Clock, ChevronRight, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { motion } from "motion/react";
 import { Hospital, Doctor } from "../data/mockData";
 import { getHospitalByIdAPI } from "../services/api";
@@ -493,7 +493,7 @@ export function HospitalDetail() {
               <div className="grid grid-cols-4 gap-4 mt-4 mb-4">
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-2">
-                    <DollarSign className="w-4 h-4" />
+                    <IndianRupee className="w-4 h-4" />
                     <span>Cost Range</span>
                   </div>
                   <p className="text-lg font-semibold">

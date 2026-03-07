@@ -3,7 +3,7 @@ import {
   Star,
   ChevronLeft,
   CheckCircle,
-  DollarSign,
+  IndianRupee,
   Building2,
   Stethoscope,
   User,
@@ -727,7 +727,7 @@ export function Step4ReviewSubmission({
           {/* Cost Information */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
+              <IndianRupee className="w-5 h-5 text-green-600" />
               Cost Breakdown
             </h3>
 

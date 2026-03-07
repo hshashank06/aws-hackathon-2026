@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import {
   Star,
   Calendar,
-  DollarSign,
+  IndianRupee,
   FileCheck,
   Clock,
   AlertCircle,
@@ -189,54 +189,54 @@ export function PastReviews() {
                     )}
                   </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <div className="flex items-center gap-1 text-blue-700 text-xs font-medium mb-1">
-                    <DollarSign className="w-3 h-3" />
-                    <span>Total Cost</span>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1 text-blue-700 text-xs font-medium mb-1">
+                        <IndianRupee className="w-3 h-3" />
+                        <span>Total Cost</span>
+                      </div>
+                      <p className="text-sm font-semibold">₹{totalCost.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1 text-green-700 text-xs font-medium mb-1">
+                        <IndianRupee className="w-3 h-3" />
+                        <span>Insurance Covered</span>
+                      </div>
+                      <p className="text-sm font-semibold">₹{insuranceCovered.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1 text-purple-700 text-xs font-medium mb-1">
+                        <IndianRupee className="w-3 h-3" />
+                        <span>Out of Pocket</span>
+                      </div>
+                      <p className="text-sm font-semibold">
+                        ₹{(totalCost - insuranceCovered).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm font-semibold">₹{review.cost.toLocaleString()}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <div className="flex items-center gap-1 text-green-700 text-xs font-medium mb-1">
-                    <DollarSign className="w-3 h-3" />
-                    <span>Insurance Covered</span>
-                  </div>
-                  <p className="text-sm font-semibold">₹{review.insuranceCovered.toLocaleString()}</p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-3">
-                  <div className="flex items-center gap-1 text-purple-700 text-xs font-medium mb-1">
-                    <DollarSign className="w-3 h-3" />
-                    <span>Out of Pocket</span>
-                  </div>
-                  <p className="text-sm font-semibold">
-                    ₹{(review.cost - review.insuranceCovered).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-            {reviews.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center"
-              >
-                <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No reviews yet
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Start sharing your healthcare experiences to help others
-                </p>
-                <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                  Create Your First Review
-                </button>
-              </motion.div>
-            )}
+                </motion.div>
+              )
+            })}
           </div>
+        )}
+
+        {!loading && !error && reviews.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center"
+          >
+            <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No reviews yet
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Start sharing your healthcare experiences to help others
+            </p>
+            <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              Create Your First Review
+            </button>
+          </motion.div>
         )}
       </div>
     </div>
