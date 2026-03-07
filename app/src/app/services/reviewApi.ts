@@ -447,10 +447,12 @@ export interface CustomerReview {
 export async function getReviewsByCustomer(
   customerId: string
 ): Promise<CustomerReview[]> {
+  console.log("[reviewApi] getReviewsByCustomer called with customerId:", customerId)
   const data = await apiGet<{ items: CustomerReview[]; count: number }>(
     "/reviews",
     { customerId, limit: "100" }
   )
+  console.log("[reviewApi] Response:", data)
   return data.items ?? []
 }
 

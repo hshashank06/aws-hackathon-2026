@@ -574,7 +574,9 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     location = location_parts[1].strip() if len(location_parts) > 1 else address
     
     # Get insurance coverage percentage directly from Hospital table
-    insurance_coverage_percent = hospital_data.get("insuranceCoverage", 0)
+    # DynamoDB stores as decimal (0.7), convert to percentage (70)
+    insurance_coverage_raw = hospital_data.get("insuranceCoverage", 0)
+    insurance_coverage_percent = int(float(insurance_coverage_raw) * 100) if insurance_coverage_raw else 0
     
     # Extract doctor IDs from LLM response
     top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]
