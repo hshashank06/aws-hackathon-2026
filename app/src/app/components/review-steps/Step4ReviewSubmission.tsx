@@ -114,20 +114,24 @@ export function Step4ReviewSubmission({
     async function fetchDoctors() {
       setDoctorsLoading(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/doctors?limit=100`)
+        const res = await fetch(`${API_BASE_URL}/doctors`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         const items: DoctorItem[] = Array.isArray(json)
           ? json
           : (json.items ?? [])
         setDoctors(items)
-        // Auto-select if name matches extracted doctor name
+
+        // Auto-select if extracted doctor name matches a fetched doctor
         if (!selectedDoctorId && allData.doctorName) {
-          const match = items.find((d) =>
-            d.doctorName
-              .toLowerCase()
-              .includes(allData.doctorName.toLowerCase())
-          )
+          const extractedLower = allData.doctorName.toLowerCase()
+          const match = items.find((d) => {
+            const dbLower = d.doctorName.toLowerCase()
+            return (
+              dbLower.includes(extractedLower) ||
+              extractedLower.includes(dbLower)
+            )
+          })
           if (match) {
             setSelectedDoctorId(match.doctorId)
             onUpdate({ ...data, doctorId: match.doctorId })
