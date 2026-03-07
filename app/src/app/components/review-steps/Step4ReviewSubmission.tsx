@@ -62,10 +62,19 @@ export function Step4ReviewSubmission({
   )
   const [doctorRating, setDoctorRating] = useState(data.doctorRating || 0)
   const [doctorReview, setDoctorReview] = useState(data.doctorReview || "")
+  // Parse currency strings like "₹108599" or "₹1,08,599" into plain numbers
+  const parseCurrency = (value: unknown): number => {
+    if (!value) return 0
+    const cleaned = String(value).replace(/[₹$,\s]/g, "")
+    const num = parseFloat(cleaned)
+    return isNaN(num) ? 0 : Math.round(num)
+  }
+
   // Autofill cost fields from document extraction if not already set
-  const autoTotalCost: number = allData.payment?.totalBillAmount ?? 0
-  const autoInsuranceCovered: number =
-    allData.claimData?.claimAmountApproved ?? 0
+  const autoTotalCost: number = parseCurrency(allData.payment?.totalBillAmount)
+  const autoInsuranceCovered: number = parseCurrency(
+    allData.claimData?.claimAmountApproved
+  )
 
   const [totalCost, setTotalCost] = useState(
     data.totalCost || autoTotalCost || 0

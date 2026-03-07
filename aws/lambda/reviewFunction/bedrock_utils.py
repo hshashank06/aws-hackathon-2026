@@ -224,6 +224,53 @@ def _extract_fields_with_model(prompt: str, *, model_id: str | None, label: str)
 
 
 # ---------------------------------------------------------------------------
+# Public: document type classification
+# ---------------------------------------------------------------------------
+
+_DOC_CLASSIFICATION_PROMPT = """\
+You are a document classifier specialising in healthcare documents.
+
+Below is text extracted from an uploaded document. Classify it into exactly one category.
+
+Return ONLY a valid JSON object with exactly 2 keys (no markdown, no explanation):
+{{
+  "documentType": "hospitalBill | insuranceClaim | medicalRecord | unknown",
+  "reason": "one concise sentence explaining the classification"
+}}
+
+Classification rules:
+- hospitalBill   : contains a hospital name, bill/invoice number, itemised charges or line-items, total bill amount, and patient payment details
+- insuranceClaim : contains a claim ID or TPA reference, insurer/TPA name, approved or sanctioned amount, claim settlement details, or policy number
+- medicalRecord  : contains physician/discharge notes, diagnosis, medications prescribed, procedure or surgery details, or patient medical history
+- unknown        : cannot determine the document type from the available text
+
+DOCUMENT TEXT (first 2000 characters):
+{raw_text}
+"""
+
+
+def classify_document_type(raw_text: str) -> dict[str, str]:
+    """
+    Classify a document as hospitalBill, insuranceClaim, medicalRecord, or unknown.
+
+    Parameters
+    ----------
+    raw_text : raw text extracted by Textract
+
+    Returns
+    -------
+    {"documentType": str, "reason": str}
+    Never raises – returns {"documentType": "unknown", "reason": "classification failed"} on error.
+    """
+    prompt = _DOC_CLASSIFICATION_PROMPT.format(raw_text=raw_text[:2000])
+    result = _extract_fields_with_model(prompt, model_id=None, label="classify_doc_type")
+    return {
+        "documentType": str(result.get("documentType", "unknown")),
+        "reason":       str(result.get("reason", "")),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public: payment description (Markdown)
 # ---------------------------------------------------------------------------
 

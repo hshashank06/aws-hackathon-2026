@@ -777,6 +777,13 @@ def _action_textract_extract(event: dict) -> dict:
     return result  # { raw_text, key_values, tables }
 
 
+_DOC_TYPE_LABELS: dict[str, str] = {
+    "insuranceClaim": "an insurance claim document",
+    "medicalRecord":  "a medical record / discharge summary",
+    "hospitalBill":   "a hospital bill",
+}
+
+
 def _action_extract_bill(event: dict) -> dict:
     """action: extract_bill — Textract → Bedrock Claude → bill payment fields."""
     textract_result = {
@@ -784,9 +791,28 @@ def _action_extract_bill(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually a hospital bill before
+    # running the expensive Textract → Bedrock extraction pipeline.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "hospitalBill":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected a hospital bill but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_bill] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":   False,
+            "reason":  reason,
+            "payment": {},
+        }
+
     payment = bill_extractor.extract_payment(textract_result)
     return {
         "valid":   True,
+        "reason":  "",
         "payment": payment,
     }
 
@@ -802,10 +828,29 @@ def _action_extract_claim(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually an insurance claim.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "insuranceClaim":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected an insurance claim but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_claim] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":   False,
+            "reason":  reason,
+            "claim":   {},
+            "payment": {},
+        }
+
     claim = claim_extractor.extract_claim(textract_result)
     return {
-        "valid": True,
-        "claim": claim,
+        "valid":  True,
+        "reason": "",
+        "claim":  claim,
         # The claim document authoritatively tells us what the patient owes;
         # surface it so the front-end / state-machine can patch payment too.
         "payment": {
@@ -825,6 +870,25 @@ def _action_extract_medical(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually a medical record.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "medicalRecord":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected a medical record but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_medical] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":          False,
+            "reason":         reason,
+            "confidence":     0.0,
+            "extractedData":  {},
+            "purposeOfVisit": "",
+        }
+
     cm_result  = comprehend_medical_utils.analyze_medical_text(textract_result["raw_text"])
     extracted  = medical_extractor.extract_medical_data(textract_result, cm_result)
     confidence = extracted.get("confidence", 0.0)
@@ -833,11 +897,12 @@ def _action_extract_medical(event: dict) -> dict:
     purpose_of_visit = extracted.pop("purposeOfVisit", "")
 
     return {
-        "valid":           True,
-        "confidence":      confidence,
-        "extractedData":   extracted,
+        "valid":          True,
+        "reason":         "",
+        "confidence":     confidence,
+        "extractedData":  extracted,
         # Returned separately so the front-end can pre-fill the purposeOfVisit field
-        "purposeOfVisit":  purpose_of_visit,
+        "purposeOfVisit": purpose_of_visit,
     }
 
 

@@ -49,7 +49,7 @@ def extract_medical_data(
 
     # Mean confidence from Comprehend Medical (0 when it detected nothing)
     scores = [e.get("score", 0.0) for e in entities]
-    confidence = round(mean(scores), 4) if scores else 0.0
+    cm_confidence = round(mean(scores), 4) if scores else 0.0
 
     # Compact entity summary for the prompt
     entities_summary = json.dumps(
@@ -87,6 +87,15 @@ def extract_medical_data(
 
     fields = bedrock_utils.extract_structured_fields_medical(prompt)
     logger.info("Bedrock extracted fields (medical model): %s", fields)
+
+    # Bedrock extraction completeness: fraction of key fields that were populated.
+    # Used as a fallback when Comprehend Medical returned no entities (cm_confidence == 0).
+    _KEY_FIELDS = ["hospitalName", "doctorName", "surgeryType", "procedureDate", "diagnosis"]
+    filled = sum(1 for f in _KEY_FIELDS if fields.get(f))
+    bedrock_confidence = round(filled / len(_KEY_FIELDS), 4)
+
+    # Use the CM score when meaningful; fall back to Bedrock completeness otherwise.
+    confidence = cm_confidence if cm_confidence > 0.0 else bedrock_confidence
 
     result = {
         "hospitalName":   str(fields.get("hospitalName")  or ""),

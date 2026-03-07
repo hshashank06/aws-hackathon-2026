@@ -254,9 +254,12 @@ export async function validateDocument(
 
     console.log(`[Document Validation API] Result for ${file.name}:`, result)
 
-    // `valid` may be absent – infer success from the presence of extracted data
-    const verified =
-      result.valid ?? (result.payment != null || result.documentId != null)
+    // result.valid is now explicitly set by the Lambda (true/false).
+    // Fall back to checking payment presence only if the field is absent (legacy).
+    const verified: boolean =
+      result.valid !== undefined
+        ? Boolean(result.valid)
+        : result.payment != null || result.documentId != null
     return {
       success: verified,
       verified: verified,
@@ -264,7 +267,7 @@ export async function validateDocument(
       documentId: result.documentId,
       message: verified
         ? "Hospital bill verified successfully"
-        : `Verification failed: ${result.reason ?? "unknown reason"}`,
+        : (result.reason ?? "Document verification failed"),
       confidence: result.confidence,
       payment: result.payment
     }
@@ -305,9 +308,11 @@ export async function validateInsuranceClaim(
       result
     )
 
-    // `valid` may be absent – infer success from the presence of extracted data
-    const verified =
-      result.valid ?? (result.claim != null || result.documentId != null)
+    // result.valid is now explicitly set by the Lambda (true/false).
+    const verified: boolean =
+      result.valid !== undefined
+        ? Boolean(result.valid)
+        : result.claim != null || result.documentId != null
     return {
       success: verified,
       verified: verified,
@@ -315,7 +320,7 @@ export async function validateInsuranceClaim(
       documentId: result.documentId,
       message: verified
         ? "Insurance claim document verified"
-        : `Verification failed: ${result.reason ?? "unknown reason"}`,
+        : (result.reason ?? "Document verification failed"),
       confidence: result.confidence,
       claimData: result.claim
     }
