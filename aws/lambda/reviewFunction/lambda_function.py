@@ -3,6 +3,8 @@ AWS Lambda – Review CRUD + Document Processing
 ==============================================
 Routes:
 
+  GET    /reviews/documents          → get_user_documents_handler
+  GET    /reviews/documents/download → get_document_download_url_handler
   POST   /reviews/presign           → generate_presigned_url_handler
   POST   /reviews/process-document  → process_document_handler
   DELETE /reviews/documents         → delete_document_handler
@@ -171,7 +173,161 @@ def _get_method(event: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 0. Delete document handler  (removes a previously-uploaded S3 object)
+# 0a. User documents handler  (lists all documents for a given customerId)
+# ---------------------------------------------------------------------------
+
+# Maps the lowercased S3 prefix to a human-readable document type label.
+_PREFIX_TO_DOC_TYPE: dict[str, str] = {
+    "documents/hospitalbills":    "Payment Receipt",
+    "documents/insuranceclaims":  "Insurance Claim",
+    "documents/medicalrecords":   "Discharge Summary",
+}
+
+_s3_meta_client = boto3.client("s3", region_name=AWS_REGION)
+
+
+def _s3_head(s3_key: str) -> dict:
+    """Return S3 HEAD object metadata, or {} on any error."""
+    try:
+        return _s3_meta_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
+    except Exception as exc:
+        logger.warning("S3 head_object failed for key '%s': %s", s3_key, exc)
+        return {}
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format bytes into a human-readable MB / KB string."""
+    if size_bytes >= 1_048_576:
+        return f"{size_bytes / 1_048_576:.1f} MB"
+    if size_bytes >= 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes} B"
+
+
+def _infer_doc_type(s3_key: str) -> str:
+    """Derive the human-readable document type from the S3 key prefix."""
+    lower = s3_key.lower()
+    for prefix, label in _PREFIX_TO_DOC_TYPE.items():
+        if lower.startswith(prefix):
+            return label
+    return "Document"
+
+
+def get_user_documents_handler(event: dict) -> dict:
+    """
+    GET /reviews/documents?customerId=<id>
+
+    Returns all documents (from every review) that belong to the given customer.
+    Each entry contains:
+      id, name, type, date, size, hospital, verified, s3Key
+
+    The customerId is the Cognito sub (stable user ID) stored in Review.customerId.
+    """
+    query_params = event.get("queryStringParameters") or {}
+    customer_id = (query_params.get("customerId") or "").strip()
+    if not customer_id:
+        return _error(400, "Missing required query parameter: customerId")
+
+    # ── 1. Fetch all reviews for this customer (full scan with filter) ──────
+    try:
+        scan_kwargs: dict[str, Any] = {
+            "FilterExpression": "customerId = :cid",
+            "ExpressionAttributeValues": {":cid": customer_id},
+        }
+        result = table.scan(**scan_kwargs)
+        reviews: list[dict] = list(result.get("Items", []))
+        while "LastEvaluatedKey" in result:
+            result = table.scan(
+                **scan_kwargs,
+                ExclusiveStartKey=result["LastEvaluatedKey"],
+            )
+            reviews.extend(result.get("Items", []))
+    except ClientError:
+        logger.exception("DynamoDB scan failed for customerId=%s", customer_id)
+        return _error(500, "Failed to retrieve user documents.")
+
+    logger.info("Found %d review(s) for customerId=%s", len(reviews), customer_id)
+
+    # ── 2. Collect unique documents across all reviews ───────────────────────
+    documents: list[dict] = []
+    seen_doc_ids: set[str] = set()
+
+    for review in reviews:
+        doc_ids: list[str] = review.get("documentIds") or []
+        if not doc_ids:
+            continue
+
+        extracted  = review.get("extractedData") or {}
+        hospital   = extracted.get("hospitalName") or review.get("hospitalId", "")
+        surgery    = extracted.get("surgeryType", "")
+        verified   = int(review.get("verified", 0)) == 1
+        # createdAt is "YYYY-MM-DD HH:MM:SS" – take only the date part
+        created_at = (review.get("createdAt") or "")[:10]
+
+        for s3_key in doc_ids:
+            if s3_key in seen_doc_ids:
+                continue
+            seen_doc_ids.add(s3_key)
+
+            doc_type = _infer_doc_type(s3_key)
+            # Build a descriptive name: "<Procedure> - <DocType>" or just docType
+            name = f"{surgery} - {doc_type}" if surgery else doc_type
+
+            # S3 HEAD for the file size (best-effort)
+            meta = _s3_head(s3_key)
+            size_bytes = meta.get("ContentLength", 0)
+            size_str = _format_size(size_bytes) if size_bytes else "—"
+
+            documents.append({
+                "id":       s3_key,
+                "name":     name,
+                "type":     doc_type,
+                "date":     created_at,
+                "size":     size_str,
+                "hospital": hospital,
+                "verified": verified,
+                "s3Key":    s3_key,
+            })
+
+    # Sort newest first
+    documents.sort(key=lambda d: d["date"], reverse=True)
+
+    return _ok({"documents": documents, "count": len(documents)})
+
+
+# ---------------------------------------------------------------------------
+# 0b. Download document handler  (returns a pre-signed S3 GET URL)
+# ---------------------------------------------------------------------------
+
+def get_document_download_url_handler(event: dict) -> dict:
+    """
+    GET /reviews/documents/download?documentId=<s3Key>
+    Returns a short-lived pre-signed S3 GET URL so the browser can download the file.
+    """
+    query_params = event.get("queryStringParameters") or {}
+    document_id = (query_params.get("documentId") or "").strip()
+    if not document_id:
+        return _error(400, "Missing required query parameter: documentId")
+
+    s3_key = document_id  # documentId == s3Key by convention
+
+    try:
+        s3_dl_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "eu-north-1"))
+        download_url = s3_dl_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": S3_BUCKET, "Key": s3_key},
+            ExpiresIn=300,  # 5 minutes
+        )
+    except Exception as exc:
+        logger.exception("Failed to generate presigned download URL for '%s'", s3_key)
+        return _error(500, f"Failed to generate download URL: {exc}")
+
+    filename = s3_key.split("/")[-1]
+    return _ok({"downloadUrl": download_url, "filename": filename, "expiresIn": 300})
+
+
+# ---------------------------------------------------------------------------
+# 0c. Delete document handler  (removes a previously-uploaded S3 object)
 # ---------------------------------------------------------------------------
 
 def delete_document_handler(event: dict) -> dict:
@@ -467,18 +623,22 @@ def list_reviews(event: dict) -> dict:
 
     # When using filters with scan, we need to scan MORE items than requested
     # because DynamoDB applies filters AFTER scanning, not before.
-    # For small limits (like 2), we need to scan significantly more items.
-    # Use a multiplier that scales with how small the limit is.
-    # 
-    # IMPORTANT: Without a GSI on hospitalId, we must scan a large portion of the table
-    # to find matching items. This is inefficient but necessary.
-    if requested_limit <= 5:
-        scan_limit = 1000  # For very small limits, scan up to 1000 items
+    #
+    # For a customerId filter we MUST traverse the entire table (no GSI exists)
+    # because the matching item(s) can be anywhere in the 10k+ item dataset.
+    # For other filters we cap the scan to avoid excessive read capacity usage.
+    customer_id = query_params.get("customerId")
+    full_table_scan = bool(customer_id)  # scan all pages when filtering by owner
+
+    if full_table_scan:
+        scan_limit = 1000  # DynamoDB page size (internal batching)
+    elif requested_limit <= 5:
+        scan_limit = 1000
     elif requested_limit <= 20:
-        scan_limit = 500  # For small limits, scan up to 500 items
+        scan_limit = 500
     else:
-        scan_limit = requested_limit * 10  # For larger limits, scan 10x more
-    
+        scan_limit = requested_limit * 10
+
     scan_kwargs: dict[str, Any] = {"Limit": scan_limit}
     last_key_raw = query_params.get("lastKey")
     if last_key_raw:
@@ -491,7 +651,6 @@ def list_reviews(event: dict) -> dict:
     filter_expressions = []
     expr_values: dict[str, str] = {}
 
-    customer_id = query_params.get("customerId")
     if customer_id:
         filter_expressions.append("customerId = :cid")
         expr_values[":cid"] = customer_id
@@ -549,34 +708,41 @@ def list_reviews(event: dict) -> dict:
         except Exception as e:
             logger.error("Test scan failed: %s", str(e))
     
-    # If we have filters and didn't find enough items, continue scanning
-    # This handles the case where matching items are distributed throughout the table
-    if filter_expressions and len(items) < requested_limit and "LastEvaluatedKey" in result:
-        logger.info("Not enough items found, continuing scan | CurrentCount=%d | Requested=%d", len(items), requested_limit)
-        
-        # Continue scanning up to 3 more times (max 4 total scans)
-        max_additional_scans = 3
+    # If we have filters and didn't find enough items, continue scanning.
+    # For customerId queries we must paginate through the ENTIRE table because
+    # the matching items can be anywhere in the storage order (no GSI exists).
+    # For other filters we cap additional scans to limit read-capacity usage.
+    if filter_expressions and "LastEvaluatedKey" in result:
+        need_more = full_table_scan or len(items) < requested_limit
+        logger.info("Continuing scan | CurrentCount=%d | Requested=%d | FullTableScan=%s",
+                    len(items), requested_limit, full_table_scan)
+
+        max_additional_scans = 9999 if full_table_scan else 3
         scan_count = 1
-        
-        while len(items) < requested_limit and "LastEvaluatedKey" in result and scan_count < max_additional_scans:
+
+        while need_more and "LastEvaluatedKey" in result and scan_count < max_additional_scans:
             scan_count += 1
             scan_kwargs["ExclusiveStartKey"] = result["LastEvaluatedKey"]
-            
+
             try:
                 result = table.scan(**scan_kwargs)
                 new_items = result.get("Items", [])
                 items.extend(new_items)
                 total_scanned += result.get("ScannedCount", 0)
                 total_matched += result.get("Count", 0)
-                
-                logger.info("Additional scan %d | Scanned: %d | Matched: %d | TotalItems: %d", 
-                           scan_count, result.get("ScannedCount", 0), result.get("Count", 0), len(items))
+
+                logger.info("Additional scan %d | Scanned: %d | Matched: %d | TotalItems: %d",
+                            scan_count, result.get("ScannedCount", 0), result.get("Count", 0), len(items))
+
+                # For non-full-table-scans stop once we have enough items
+                if not full_table_scan and len(items) >= requested_limit:
+                    break
             except ClientError:
                 logger.exception("Additional scan failed")
                 break
-        
-        logger.info("Scan complete after %d scans | TotalScanned: %d | TotalMatched: %d | TotalItems: %d", 
-                   scan_count, total_scanned, total_matched, len(items))
+
+        logger.info("Scan finished after %d page(s) | TotalScanned: %d | TotalMatched: %d",
+                    scan_count, total_scanned, total_matched)
     
     # Limit the response to the requested number of items
     items = items[:requested_limit]
@@ -611,6 +777,13 @@ def _action_textract_extract(event: dict) -> dict:
     return result  # { raw_text, key_values, tables }
 
 
+_DOC_TYPE_LABELS: dict[str, str] = {
+    "insuranceClaim": "an insurance claim document",
+    "medicalRecord":  "a medical record / discharge summary",
+    "hospitalBill":   "a hospital bill",
+}
+
+
 def _action_extract_bill(event: dict) -> dict:
     """action: extract_bill — Textract → Bedrock Claude → bill payment fields."""
     textract_result = {
@@ -618,9 +791,28 @@ def _action_extract_bill(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually a hospital bill before
+    # running the expensive Textract → Bedrock extraction pipeline.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "hospitalBill":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected a hospital bill but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_bill] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":   False,
+            "reason":  reason,
+            "payment": {},
+        }
+
     payment = bill_extractor.extract_payment(textract_result)
     return {
         "valid":   True,
+        "reason":  "",
         "payment": payment,
     }
 
@@ -636,10 +828,29 @@ def _action_extract_claim(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually an insurance claim.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "insuranceClaim":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected an insurance claim but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_claim] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":   False,
+            "reason":  reason,
+            "claim":   {},
+            "payment": {},
+        }
+
     claim = claim_extractor.extract_claim(textract_result)
     return {
-        "valid": True,
-        "claim": claim,
+        "valid":  True,
+        "reason": "",
+        "claim":  claim,
         # The claim document authoritatively tells us what the patient owes;
         # surface it so the front-end / state-machine can patch payment too.
         "payment": {
@@ -659,6 +870,25 @@ def _action_extract_medical(event: dict) -> dict:
         "key_values": event.get("key_values", {}),
         "tables":     event.get("tables", []),
     }
+
+    # Validate that the uploaded document is actually a medical record.
+    classification = bedrock_utils.classify_document_type(textract_result["raw_text"])
+    doc_type = classification.get("documentType", "unknown")
+    if doc_type != "medicalRecord":
+        found_label = _DOC_TYPE_LABELS.get(doc_type, "an unrecognized document")
+        reason = (
+            f"Invalid document: expected a medical record but received {found_label}. "
+            "Please upload the correct file."
+        )
+        logger.warning("[extract_medical] Wrong document type detected: %s – %s", doc_type, reason)
+        return {
+            "valid":          False,
+            "reason":         reason,
+            "confidence":     0.0,
+            "extractedData":  {},
+            "purposeOfVisit": "",
+        }
+
     cm_result  = comprehend_medical_utils.analyze_medical_text(textract_result["raw_text"])
     extracted  = medical_extractor.extract_medical_data(textract_result, cm_result)
     confidence = extracted.get("confidence", 0.0)
@@ -667,11 +897,12 @@ def _action_extract_medical(event: dict) -> dict:
     purpose_of_visit = extracted.pop("purposeOfVisit", "")
 
     return {
-        "valid":           True,
-        "confidence":      confidence,
-        "extractedData":   extracted,
+        "valid":          True,
+        "reason":         "",
+        "confidence":     confidence,
+        "extractedData":  extracted,
         # Returned separately so the front-end can pre-fill the purposeOfVisit field
-        "purposeOfVisit":  purpose_of_visit,
+        "purposeOfVisit": purpose_of_visit,
     }
 
 
@@ -858,6 +1089,12 @@ def lambda_handler(event: dict, context: Any) -> dict:
 
     if method == "POST" and path.endswith("/reviews/process-document"):
         return process_document_handler(event)
+
+    if method == "GET" and path.endswith("/reviews/documents/download"):
+        return get_document_download_url_handler(event)
+
+    if method == "GET" and path.endswith("/reviews/documents"):
+        return get_user_documents_handler(event)
 
     if method == "DELETE" and path.endswith("/reviews/documents"):
         return delete_document_handler(event)

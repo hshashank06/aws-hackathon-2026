@@ -81,6 +81,8 @@
         }
       },
       "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "reason.$": "$.Payload.reason",
         "payment.$": "$.Payload.payment"
       },
       "Retry": [
@@ -119,6 +121,8 @@
         }
       },
       "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "reason.$": "$.Payload.reason",
         "claim.$": "$.Payload.claim",
         "payment.$": "$.Payload.payment"
       },
@@ -158,6 +162,8 @@
         }
       },
       "ResultSelector": {
+        "valid.$": "$.Payload.valid",
+        "reason.$": "$.Payload.reason",
         "confidence.$": "$.Payload.confidence",
         "extractedData.$": "$.Payload.extractedData",
         "purposeOfVisit.$": "$.Payload.purposeOfVisit"

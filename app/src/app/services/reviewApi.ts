@@ -98,6 +98,25 @@ async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function apiGet<T>(
+  path: string,
+  params?: Record<string, string>
+): Promise<T> {
+  const url = new URL(`${API_BASE_URL}${path}`, window.location.href)
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
+  }
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { "Content-Type": "application/json" }
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error((err as any).error ?? `HTTP ${res.status}`)
+  }
+  return res.json() as Promise<T>
+}
+
 /**
  * Delete a previously-uploaded document from S3.
  * documentId == s3Key returned by the presign endpoint.
@@ -113,6 +132,50 @@ export async function deleteDocument(documentId: string): Promise<void> {
       `[Document API] Failed to delete document '${documentId}' from S3: ${err.message}`
     )
   }
+}
+
+// ---------------------------------------------------------------------------
+// Get user documents
+// ---------------------------------------------------------------------------
+
+export interface UserDocument {
+  id: string
+  name: string
+  type: string
+  date: string
+  size: string
+  hospital: string
+  verified: boolean
+  s3Key: string
+}
+
+/**
+ * Fetch all documents uploaded by the given user (by Cognito sub / customerId).
+ * Calls GET /reviews/documents?customerId=<id>
+ */
+export async function getUserDocuments(
+  customerId: string
+): Promise<UserDocument[]> {
+  const data = await apiGet<{ documents: UserDocument[]; count: number }>(
+    "/reviews/documents",
+    { customerId }
+  )
+  return data.documents ?? []
+}
+
+/**
+ * Get a short-lived pre-signed S3 GET URL for downloading a document.
+ * Calls GET /reviews/documents/download?documentId=<s3Key>
+ */
+export async function getDocumentDownloadUrl(
+  documentId: string
+): Promise<string> {
+  const data = await apiGet<{
+    downloadUrl: string
+    filename: string
+    expiresIn: number
+  }>("/reviews/documents/download", { documentId })
+  return data.downloadUrl
 }
 
 /**
@@ -191,9 +254,12 @@ export async function validateDocument(
 
     console.log(`[Document Validation API] Result for ${file.name}:`, result)
 
-    // `valid` may be absent – infer success from the presence of extracted data
-    const verified =
-      result.valid ?? (result.payment != null || result.documentId != null)
+    // result.valid is now explicitly set by the Lambda (true/false).
+    // Fall back to checking payment presence only if the field is absent (legacy).
+    const verified: boolean =
+      result.valid !== undefined
+        ? Boolean(result.valid)
+        : result.payment != null || result.documentId != null
     return {
       success: verified,
       verified: verified,
@@ -201,7 +267,7 @@ export async function validateDocument(
       documentId: result.documentId,
       message: verified
         ? "Hospital bill verified successfully"
-        : `Verification failed: ${result.reason ?? "unknown reason"}`,
+        : (result.reason ?? "Document verification failed"),
       confidence: result.confidence,
       payment: result.payment
     }
@@ -242,9 +308,11 @@ export async function validateInsuranceClaim(
       result
     )
 
-    // `valid` may be absent – infer success from the presence of extracted data
-    const verified =
-      result.valid ?? (result.claim != null || result.documentId != null)
+    // result.valid is now explicitly set by the Lambda (true/false).
+    const verified: boolean =
+      result.valid !== undefined
+        ? Boolean(result.valid)
+        : result.claim != null || result.documentId != null
     return {
       success: verified,
       verified: verified,
@@ -252,7 +320,7 @@ export async function validateInsuranceClaim(
       documentId: result.documentId,
       message: verified
         ? "Insurance claim document verified"
-        : `Verification failed: ${result.reason ?? "unknown reason"}`,
+        : (result.reason ?? "Document verification failed"),
       confidence: result.confidence,
       claimData: result.claim
     }
@@ -266,20 +334,28 @@ export async function validateInsuranceClaim(
   }
 }
 
+export interface MedicalExtractionResult {
+  extractedData: ExtractedMedicalData
+  /** S3 keys for every medical record file that was successfully uploaded */
+  documentIds: string[]
+}
+
 /**
  * Extract medical data from one or more medical record files:
  *   per file: upload → S3 → Rekognition → Textract → Comprehend Medical → extractedData{}
  *   Results from multiple files are merged (highest confidence wins per field).
+ *   Also returns the s3Keys (documentIds) for all successfully processed files.
  */
 export async function extractMedicalData(
   files: File[]
-): Promise<ExtractedMedicalData> {
+): Promise<MedicalExtractionResult> {
   console.log(`[Medical Extraction API] Processing ${files.length} file(s)`)
 
   const customerId: string =
     (window as any).__reviewCustomerId ?? "customer_unknown"
 
   const results: any[] = []
+  const collectedDocumentIds: string[] = []
 
   for (const file of files) {
     try {
@@ -288,6 +364,7 @@ export async function extractMedicalData(
         customerId,
         "medicalRecord"
       )
+      collectedDocumentIds.push(documentId)
       const result = await processDocument(s3Key, documentId, "medicalRecord")
       if (result?.extractedData) {
         results.push(result)
@@ -323,7 +400,58 @@ export async function extractMedicalData(
   }
 
   console.log(`[Medical Extraction API] Merged extractedData:`, best)
-  return best
+  console.log(`[Medical Extraction API] Document IDs:`, collectedDocumentIds)
+  return { extractedData: best, documentIds: collectedDocumentIds }
+}
+
+// ---------------------------------------------------------------------------
+// List reviews for a customer
+// ---------------------------------------------------------------------------
+
+export interface CustomerReview {
+  reviewId: string
+  hospitalId: string
+  doctorId: string
+  customerId: string
+  purposeOfVisit: string
+  hospitalReview: string
+  doctorReview: { doctorId: string; doctorReview: string }
+  payment: {
+    billNo?: string
+    amountToBePayed?: number | string
+    totalBillAmount?: number | string
+    description?: string
+  }
+  claim?: {
+    claimId?: string
+    claimAmountApproved?: number | string
+    remainingAmountToBePaid?: number | string
+  } | null
+  extractedData: {
+    hospitalName?: string
+    doctorName?: string
+    surgeryType?: string
+    procedureDate?: string
+    diagnosis?: string
+    medications?: string[]
+    confidence?: number
+  }
+  verified: number
+  createdAt: string
+}
+
+/**
+ * Fetch all reviews submitted by the given customer (Cognito sub).
+ * Calls GET /reviews?customerId=<id>
+ */
+export async function getReviewsByCustomer(
+  customerId: string
+): Promise<CustomerReview[]> {
+  const data = await apiGet<{ items: CustomerReview[]; count: number }>(
+    "/reviews",
+    { customerId, limit: "100" }
+  )
+  return data.items ?? []
 }
 
 /**
