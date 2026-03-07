@@ -42,7 +42,7 @@ export function Step1HospitalSelection({ data, onUpdate, onNext }: Step1Props) {
       setHospitalsLoading(true)
       setHospitalsError(null)
       try {
-        const res = await fetch(`${API_BASE_URL}/hospitals?limit=100`)
+        const res = await fetch(`${API_BASE_URL}/hospitals`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         // API returns { items: [...] } or array directly

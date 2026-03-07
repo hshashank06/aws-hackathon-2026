@@ -47,7 +47,7 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
     async function fetchCompanies() {
       setCompaniesLoading(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/insurance-companies?limit=100`)
+        const res = await fetch(`${API_BASE_URL}/insurance-companies`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         const items: InsuranceCompanyItem[] = Array.isArray(json)
