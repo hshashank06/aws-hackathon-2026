@@ -104,14 +104,14 @@ export function PastReviews() {
                     <DollarSign className="w-3 h-3" />
                     <span>Total Cost</span>
                   </div>
-                  <p className="text-sm font-semibold">${review.cost.toLocaleString()}</p>
+                  <p className="text-sm font-semibold">₹{review.cost.toLocaleString()}</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <div className="flex items-center gap-1 text-green-700 text-xs font-medium mb-1">
                     <DollarSign className="w-3 h-3" />
                     <span>Insurance Covered</span>
                   </div>
-                  <p className="text-sm font-semibold">${review.insuranceCovered.toLocaleString()}</p>
+                  <p className="text-sm font-semibold">₹{review.insuranceCovered.toLocaleString()}</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-3">
                   <div className="flex items-center gap-1 text-purple-700 text-xs font-medium mb-1">
@@ -119,7 +119,7 @@ export function PastReviews() {
                     <span>Out of Pocket</span>
                   </div>
                   <p className="text-sm font-semibold">
-                    ${(review.cost - review.insuranceCovered).toLocaleString()}
+                    ₹{(review.cost - review.insuranceCovered).toLocaleString()}
                   </p>
                 </div>
               </div>

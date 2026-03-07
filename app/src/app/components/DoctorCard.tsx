@@ -114,9 +114,9 @@ export function DoctorCard({ doctor, index }: DoctorCardProps) {
                 </div>
                 <p className="text-[10px] text-gray-500 line-clamp-2">{review.comment}</p>
                 <div className="flex gap-2 mt-1 text-[10px] text-gray-600">
-                  <span>Cost: ${review.cost.toLocaleString()}</span>
+                  <span>Cost: ₹{review.cost.toLocaleString()}</span>
                   <span>•</span>
-                  <span>Covered: ${review.insuranceCovered.toLocaleString()}</span>
+                  <span>Covered: ₹{review.insuranceCovered.toLocaleString()}</span>
                 </div>
               </div>
             ))}

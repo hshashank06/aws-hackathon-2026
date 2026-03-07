@@ -12,7 +12,7 @@ Routes:
 
 Environment variables (required):
   BEDROCK_AGENT_ID       – Bedrock Agent ID (e.g., ASPMAO88W7)
-  BEDROCK_AGENT_ALIAS_ID – Agent Alias ID (e.g., FXGJQUGJRJQ)
+  BEDROCK_AGENT_ALIAS_ID – Agent Alias ID (e.g., I2FYS2ELU3)
   BEDROCK_REGION         – AWS region for Bedrock (default: us-east-1)
   API_GATEWAY_BASE_URL   – Base URL for API Gateway endpoints
   
@@ -61,7 +61,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "TOUEUHIO1O")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "I2FYS2ELU3")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 API_GATEWAY_BASE_URL = os.environ.get(
     "API_GATEWAY_BASE_URL",
@@ -573,10 +573,8 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     location_parts = address.split(",")
     location = location_parts[1].strip() if len(location_parts) > 1 else address
     
-    # Calculate insurance coverage percentage
-    total_claims = hospital_data.get("totalNumberOfClaims", 0)
-    approved_claims = hospital_data.get("totalNumberOfClaimsApproved", 0)
-    insurance_coverage_percent = int((approved_claims / total_claims * 100)) if total_claims > 0 else 0
+    # Get insurance coverage percentage directly from Hospital table
+    insurance_coverage_percent = hospital_data.get("insuranceCoverage", 0)
     
     # Extract doctor IDs from LLM response
     top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]

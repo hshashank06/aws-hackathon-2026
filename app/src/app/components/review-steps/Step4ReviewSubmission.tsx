@@ -686,7 +686,7 @@ export function Step4ReviewSubmission({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Total Cost * ($)
+                  Total Cost * (₹)
                 </label>
                 <input
                   type="number"
@@ -701,7 +701,7 @@ export function Step4ReviewSubmission({
 
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Insurance Covered ($)
+                  Insurance Covered (₹)
                 </label>
                 <input
                   type="number"
@@ -721,7 +721,7 @@ export function Step4ReviewSubmission({
                   <div>
                     <p className="text-xs text-gray-600 mb-1">Total Cost</p>
                     <p className="text-lg font-bold text-gray-900">
-                      ${totalCost.toLocaleString()}
+                      ₹{totalCost.toLocaleString()}
                     </p>
                   </div>
                   <div>
@@ -729,13 +729,13 @@ export function Step4ReviewSubmission({
                       Insurance Covered
                     </p>
                     <p className="text-lg font-bold text-green-700">
-                      ${insuranceCovered.toLocaleString()}
+                      ₹{insuranceCovered.toLocaleString()}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-600 mb-1">Out of Pocket</p>
                     <p className="text-lg font-bold text-blue-700">
-                      ${(totalCost - insuranceCovered).toLocaleString()}
+                      ₹{(totalCost - insuranceCovered).toLocaleString()}
                     </p>
                   </div>
                 </div>

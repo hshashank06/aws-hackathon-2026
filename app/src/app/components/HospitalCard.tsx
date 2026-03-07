@@ -21,14 +21,10 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
     setIsHovered(false);
   };
 
-  // Use insuranceCoveragePercent from Lambda if available, otherwise calculate from reviews
+  // Use insuranceCoveragePercent from Lambda (comes from Hospital table's insuranceCoverage field)
   const insuranceCoveragePercent = hospital.insuranceCoveragePercent !== undefined
     ? hospital.insuranceCoveragePercent
-    : (() => {
-        const totalCost = hospital.reviews.reduce((acc, r) => acc + r.cost, 0);
-        const totalInsurance = hospital.reviews.reduce((acc, r) => acc + r.insuranceCovered, 0);
-        return totalCost > 0 ? Math.round((totalInsurance / totalCost) * 100) : 85;
-      })();
+    : 0; // Default to 0 if not available
 
   // Trust badge color mapping
   const badgeColors = {
