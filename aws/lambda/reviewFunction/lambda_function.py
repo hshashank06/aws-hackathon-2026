@@ -59,6 +59,7 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Key
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -228,22 +229,28 @@ def get_user_documents_handler(event: dict) -> dict:
     if not customer_id:
         return _error(400, "Missing required query parameter: customerId")
 
-    # ── 1. Fetch all reviews for this customer (full scan with filter) ──────
+    # ── 1. Fetch all reviews for this customer using CustomerIndex GSI (fast) ──
     try:
-        scan_kwargs: dict[str, Any] = {
-            "FilterExpression": "customerId = :cid",
-            "ExpressionAttributeValues": {":cid": customer_id},
+        logger.info("Using CustomerIndex GSI to fetch reviews for customerId: %s", customer_id)
+        
+        query_kwargs: dict[str, Any] = {
+            "IndexName": "CustomerIndex",
+            "KeyConditionExpression": Key("customerId").eq(customer_id)
         }
-        result = table.scan(**scan_kwargs)
+        
+        result = table.query(**query_kwargs)
         reviews: list[dict] = list(result.get("Items", []))
+        
+        # Handle pagination if there are more results
         while "LastEvaluatedKey" in result:
-            result = table.scan(
-                **scan_kwargs,
-                ExclusiveStartKey=result["LastEvaluatedKey"],
-            )
+            query_kwargs["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+            result = table.query(**query_kwargs)
             reviews.extend(result.get("Items", []))
+            
+        logger.info("CustomerIndex GSI query complete | Found %d reviews", len(reviews))
+        
     except ClientError:
-        logger.exception("DynamoDB scan failed for customerId=%s", customer_id)
+        logger.exception("DynamoDB GSI query failed for customerId=%s", customer_id)
         return _error(500, "Failed to retrieve user documents.")
 
     logger.info("Found %d review(s) for customerId=%s", len(reviews), customer_id)
@@ -603,14 +610,19 @@ def get_review(event: dict) -> dict:
 def list_reviews(event: dict) -> dict:
     """
     GET /reviews
-    Returns a paginated list of reviews with optional filtering.
+    Returns a paginated list of reviews.
     Query params:
+      customerId – (OPTIONAL) filter by customer ID - uses CustomerIndex GSI for fast lookup
+      hospitalId – (OPTIONAL) filter by hospital ID - uses HospitalIdIndex GSI for fast lookup
       limit      – max items per page (default 20, max 100)
       lastKey    – opaque pagination token returned by a previous call
-      customerId – filter by customer ID
-      hospitalId – filter by hospital ID
-      doctorId   – filter by doctor ID
-      policyId   – filter by insurance policy ID
+      doctorId   – optional filter by doctor ID
+      policyId   – optional filter by insurance policy ID
+    
+    Performance Strategy (chooses best index automatically):
+      - WITH customerId: Uses CustomerIndex GSI (fastest)
+      - WITH hospitalId (no customerId): Uses HospitalIdIndex GSI (fast)
+      - WITHOUT indexed fields: Uses scan with filters (slower)
     
     Multiple filters can be combined (AND logic).
     """
@@ -621,128 +633,152 @@ def list_reviews(event: dict) -> dict:
     except ValueError:
         requested_limit = 20
 
-    # When using filters with scan, we need to scan MORE items than requested
-    # because DynamoDB applies filters AFTER scanning, not before.
-    #
-    # For a customerId filter we MUST traverse the entire table (no GSI exists)
-    # because the matching item(s) can be anywhere in the 10k+ item dataset.
-    # For other filters we cap the scan to avoid excessive read capacity usage.
     customer_id = query_params.get("customerId")
-    full_table_scan = bool(customer_id)  # scan all pages when filtering by owner
-
-    if full_table_scan:
-        scan_limit = 1000  # DynamoDB page size (internal batching)
-    elif requested_limit <= 5:
-        scan_limit = 1000
-    elif requested_limit <= 20:
-        scan_limit = 500
-    else:
-        scan_limit = requested_limit * 10
-
-    scan_kwargs: dict[str, Any] = {"Limit": scan_limit}
-    last_key_raw = query_params.get("lastKey")
-    if last_key_raw:
-        try:
-            scan_kwargs["ExclusiveStartKey"] = json.loads(last_key_raw)
-        except (json.JSONDecodeError, TypeError):
-            return _error(400, "Invalid lastKey token.")
-
-    # Build filter expressions for multiple optional filters
-    filter_expressions = []
-    expr_values: dict[str, str] = {}
-
-    if customer_id:
-        filter_expressions.append("customerId = :cid")
-        expr_values[":cid"] = customer_id
-
     hospital_id = query_params.get("hospitalId")
-    if hospital_id:
-        filter_expressions.append("hospitalId = :hid")
-        expr_values[":hid"] = hospital_id
-
     doctor_id = query_params.get("doctorId")
-    if doctor_id:
-        filter_expressions.append("doctorId = :did")
-        expr_values[":did"] = doctor_id
-
     policy_id = query_params.get("policyId")
-    if policy_id:
-        filter_expressions.append("policyId = :pid")
-        expr_values[":pid"] = policy_id
 
-    # Apply filters if any exist
-    if filter_expressions:
-        scan_kwargs["FilterExpression"] = " AND ".join(filter_expressions)
-        scan_kwargs["ExpressionAttributeValues"] = expr_values
-        logger.info("Scanning with filters: %s | Values: %s | ScanLimit: %d", 
-                   filter_expressions, expr_values, scan_limit)
-    else:
-        logger.info("Scanning without filters | ScanLimit: %d", scan_limit)
-
-    try:
-        result = table.scan(**scan_kwargs)
-    except ClientError:
-        logger.exception("DynamoDB scan failed")
-        return _error(500, "Failed to list reviews.")
-
-    # Get all items that matched the filter
-    items = result.get("Items", [])
-    total_scanned = result.get("ScannedCount", 0)
-    total_matched = result.get("Count", 0)
+    # -------------------------------------------------------------------------
+    # Smart Query Strategy: Choose the best index based on provided parameters
+    # -------------------------------------------------------------------------
     
-    logger.info("Scan complete | Scanned: %d | Matched: %d | Requested: %d", 
-               total_scanned, total_matched, requested_limit)
+    # CASE 1: customerId provided - Use CustomerIndex GSI (fastest)
+    if customer_id:
+        logger.info("Using CustomerIndex GSI query for customerId: %s", customer_id)
+        
+        query_kwargs: dict[str, Any] = {
+            "IndexName": "CustomerIndex",
+            "KeyConditionExpression": Key("customerId").eq(customer_id),
+            "Limit": requested_limit
+        }
+        
+        last_key_raw = query_params.get("lastKey")
+        if last_key_raw:
+            try:
+                query_kwargs["ExclusiveStartKey"] = json.loads(last_key_raw)
+            except (json.JSONDecodeError, TypeError):
+                return _error(400, "Invalid lastKey token.")
+        
+        # Build filter expressions for additional filters
+        filter_expressions = []
+        expr_values: dict[str, str] = {}
+        
+        if hospital_id:
+            filter_expressions.append("hospitalId = :hid")
+            expr_values[":hid"] = hospital_id
+        
+        if doctor_id:
+            filter_expressions.append("doctorId = :did")
+            expr_values[":did"] = doctor_id
+        
+        if policy_id:
+            filter_expressions.append("policyId = :pid")
+            expr_values[":pid"] = policy_id
+        
+        if filter_expressions:
+            query_kwargs["FilterExpression"] = " AND ".join(filter_expressions)
+            query_kwargs["ExpressionAttributeValues"] = expr_values
+            logger.info("GSI query with additional filters: %s", filter_expressions)
+        
+        try:
+            result = table.query(**query_kwargs)
+            logger.info("CustomerIndex GSI query complete | Items: %d", result.get("Count", 0))
+        except ClientError:
+            logger.exception("DynamoDB GSI query failed")
+            return _error(500, "Failed to list reviews.")
+    
+    # CASE 2: hospitalId provided (but no customerId) - Use HospitalIdIndex GSI (fast)
+    elif hospital_id:
+        logger.info("Using HospitalIdIndex GSI query for hospitalId: %s", hospital_id)
+        
+        query_kwargs: dict[str, Any] = {
+            "IndexName": "HospitalIdIndex",
+            "KeyConditionExpression": Key("hospitalId").eq(hospital_id),
+            "Limit": requested_limit
+        }
+        
+        last_key_raw = query_params.get("lastKey")
+        if last_key_raw:
+            try:
+                query_kwargs["ExclusiveStartKey"] = json.loads(last_key_raw)
+            except (json.JSONDecodeError, TypeError):
+                return _error(400, "Invalid lastKey token.")
+        
+        # Add additional filters for doctorId and policyId
+        filter_expressions = []
+        expr_values: dict[str, str] = {}
+        
+        if doctor_id:
+            filter_expressions.append("doctorId = :did")
+            expr_values[":did"] = doctor_id
+        
+        if policy_id:
+            filter_expressions.append("policyId = :pid")
+            expr_values[":pid"] = policy_id
+        
+        if filter_expressions:
+            query_kwargs["FilterExpression"] = " AND ".join(filter_expressions)
+            query_kwargs["ExpressionAttributeValues"] = expr_values
+            logger.info("HospitalIdIndex GSI query with additional filters: %s", filter_expressions)
+        
+        try:
+            result = table.query(**query_kwargs)
+            logger.info("HospitalIdIndex GSI query complete | Items: %d", result.get("Count", 0))
+        except ClientError:
+            logger.exception("DynamoDB GSI query failed")
+            return _error(500, "Failed to list reviews.")
+    
+    # CASE 3: No indexed fields provided - Use scan with filters
+    else:
+        logger.info("No indexed fields provided - using scan with filters")
+        
+        scan_kwargs: dict[str, Any] = {
+            "Limit": requested_limit
+        }
+        
+        last_key_raw = query_params.get("lastKey")
+        if last_key_raw:
+            try:
+                scan_kwargs["ExclusiveStartKey"] = json.loads(last_key_raw)
+            except (json.JSONDecodeError, TypeError):
+                return _error(400, "Invalid lastKey token.")
+        
+        # Build filter expressions
+        filter_expressions = []
+        expr_values: dict[str, str] = {}
+        
+        if doctor_id:
+            filter_expressions.append("doctorId = :did")
+            expr_values[":did"] = doctor_id
+        
+        if policy_id:
+            filter_expressions.append("policyId = :pid")
+            expr_values[":pid"] = policy_id
+        
+        if filter_expressions:
+            scan_kwargs["FilterExpression"] = " AND ".join(filter_expressions)
+            scan_kwargs["ExpressionAttributeValues"] = expr_values
+            logger.info("Scan with filters: %s", filter_expressions)
+        
+        try:
+            result = table.scan(**scan_kwargs)
+            logger.info("Scan complete | Items: %d", result.get("Count", 0))
+        except ClientError:
+            logger.exception("DynamoDB scan failed")
+            return _error(500, "Failed to list reviews.")
+
+    # Get all items that matched
+    items = result.get("Items", [])
+    total_count = result.get("Count", 0)
+    
+    logger.info("Query/Scan complete | Items returned: %d | Requested: %d", 
+               total_count, requested_limit)
     
     # Debug: Log first few items to see what we got
     if items:
         logger.info("Sample items (first 2): %s", json.dumps(items[:2], cls=DecimalEncoder)[:500])
     else:
-        logger.warning("No items found! Checking if table is empty or filter is too restrictive")
-        # Try a scan without filters to see if table has any data
-        try:
-            test_result = table.scan(Limit=5)
-            test_count = test_result.get("Count", 0)
-            logger.info("Test scan without filters returned %d items", test_count)
-            if test_count > 0:
-                logger.info("Sample item from test scan: %s", json.dumps(test_result.get("Items", [])[0], cls=DecimalEncoder)[:500])
-        except Exception as e:
-            logger.error("Test scan failed: %s", str(e))
-    
-    # If we have filters and didn't find enough items, continue scanning.
-    # For customerId queries we must paginate through the ENTIRE table because
-    # the matching items can be anywhere in the storage order (no GSI exists).
-    # For other filters we cap additional scans to limit read-capacity usage.
-    if filter_expressions and "LastEvaluatedKey" in result:
-        need_more = full_table_scan or len(items) < requested_limit
-        logger.info("Continuing scan | CurrentCount=%d | Requested=%d | FullTableScan=%s",
-                    len(items), requested_limit, full_table_scan)
-
-        max_additional_scans = 9999 if full_table_scan else 3
-        scan_count = 1
-
-        while need_more and "LastEvaluatedKey" in result and scan_count < max_additional_scans:
-            scan_count += 1
-            scan_kwargs["ExclusiveStartKey"] = result["LastEvaluatedKey"]
-
-            try:
-                result = table.scan(**scan_kwargs)
-                new_items = result.get("Items", [])
-                items.extend(new_items)
-                total_scanned += result.get("ScannedCount", 0)
-                total_matched += result.get("Count", 0)
-
-                logger.info("Additional scan %d | Scanned: %d | Matched: %d | TotalItems: %d",
-                            scan_count, result.get("ScannedCount", 0), result.get("Count", 0), len(items))
-
-                # For non-full-table-scans stop once we have enough items
-                if not full_table_scan and len(items) >= requested_limit:
-                    break
-            except ClientError:
-                logger.exception("Additional scan failed")
-                break
-
-        logger.info("Scan finished after %d page(s) | TotalScanned: %d | TotalMatched: %d",
-                    scan_count, total_scanned, total_matched)
+        logger.warning("No items found!")
     
     # Limit the response to the requested number of items
     items = items[:requested_limit]

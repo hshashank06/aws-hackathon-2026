@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, Sparkles } from "lucide-react";
 import { HospitalCard } from "../components/HospitalCard";
 import { Hospital } from "../data/mockData";
 import { motion, AnimatePresence } from "motion/react";
-import { searchHospitalsAPI } from "../services/api";
 import { LoadingSpinner } from "../components/LoadingSkeleton";
 import { useSearch } from "../contexts/SearchContext";
+import { AgentActivityStream } from "../components/AgentActivityStream";
+import * as AppSync from "../services/appsync";
+import type { AgentChunk } from "../services/appsync";
 
 export function Home() {
   const { searchResults: globalSearchResults, setSearchResults: setGlobalSearchResults, setSearchId: setGlobalSearchId } = useSearch();
@@ -13,6 +15,11 @@ export function Home() {
   const [searchResults, setSearchResults] = useState<Hospital[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Streaming state
+  const [agentChunks, setAgentChunks] = useState<string[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const subscriptionRef = useRef<any>(null);
 
   // Restore search results from context when component mounts
   useEffect(() => {
@@ -22,6 +29,76 @@ export function Home() {
     }
   }, [globalSearchResults]);
 
+  // Cleanup subscription on unmount
+  useEffect(() => {
+    return () => {
+      if (subscriptionRef.current) {
+        console.log('[Home] Cleaning up subscription');
+        subscriptionRef.current.unsubscribe();
+      }
+    };
+  }, []);
+
+  /**
+   * Get user's current location
+   */
+  const getUserLocation = async (): Promise<AppSync.LocationInput | undefined> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        console.warn('[Home] Geolocation not supported');
+        resolve(undefined);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          console.log('[Home] User location obtained:', location);
+          resolve(location);
+        },
+        (error) => {
+          console.warn('[Home] Failed to get user location:', error.message);
+          resolve(undefined);
+        },
+        {
+          timeout: 5000,
+          maximumAge: 300000, // Cache for 5 minutes
+        }
+      );
+    });
+  };
+
+  /**
+   * Convert AppSync Hospital to UI Hospital format
+   */
+  const adaptAppSyncHospital = (h: AppSync.Hospital): Hospital => {
+    return {
+      id: h.id,
+      name: h.name,
+      location: h.location,
+      rating: h.rating,
+      reviewCount: h.reviewCount,
+      imageUrl: h.imageUrl || "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400",
+      description: h.description || "",
+      specialties: h.specialties,
+      acceptedInsurance: h.acceptedInsurance,
+      avgCostRange: h.avgCostRange,
+      aiRecommendation: h.aiRecommendation,
+      insuranceCoveragePercent: h.insuranceCoveragePercent,
+      trustScore: h.trustScore,
+      verificationBadge: h.verificationBadge,
+      coordinates: h.coordinates,
+      distance: h.distance,
+      topDoctorIds: h.topDoctorIds,
+      doctors: [], // Lazy loaded
+      reviews: [], // Lazy loaded
+      doctorAIReviews: {}, // Not needed in UI
+    };
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -29,25 +106,111 @@ export function Home() {
       return;
     }
 
+    // Reset state
     setIsLoading(true);
     setHasSearched(true);
+    setSearchResults([]);
+    setAgentChunks([]);
+    setIsStreaming(true);
+
+    // Cleanup previous subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+    }
 
     try {
-      // Call the search API
-      const { hospitals, searchId } = await searchHospitalsAPI(searchQuery);
-      console.log("[Home] Search results received:", hospitals.length, "hospitals");
-      console.log("[Home] First hospital data:", hospitals[0]);
-      console.log("[Home] First hospital coordinates:", hospitals[0]?.coordinates);
-      console.log("[Home] First hospital distance:", hospitals[0]?.distance);
-      setSearchResults(hospitals);
-      // Store in global context so detail page can access
-      setGlobalSearchResults(hospitals);
+      // Get user location
+      const userLocation = await getUserLocation();
+
+      // Enhance query with location if needed
+      let enhancedQuery = searchQuery.replace(/\bnear\s+me\b/i, 'in Hyderabad');
+      const hasLocation = /\b(in|near|at|around)\s+\w+/i.test(enhancedQuery) || 
+                          /hyderabad|bangalore|mumbai|delhi|chennai|kolkata/i.test(enhancedQuery);
+      
+      if (!hasLocation) {
+        enhancedQuery = `${enhancedQuery} in Hyderabad`;
+        console.log(`[Home] No location detected, enhanced query: "${enhancedQuery}"`);
+      }
+
+      // Step 1: Initiate search via AppSync
+      console.log('[Home] Initiating search via AppSync...');
+      const { searchId, status } = await AppSync.initiateSearch(
+        enhancedQuery,
+        'test-user-123', // TODO: Get from auth context
+        userLocation
+      );
+
+      if (status === 'error') {
+        throw new Error('Failed to initiate search');
+      }
+
+      console.log('[Home] Search initiated:', searchId);
       setGlobalSearchId(searchId);
+
+      // Step 2: Subscribe to agent activity
+      console.log('[Home] Subscribing to agent activity...');
+      subscriptionRef.current = AppSync.subscribeToAgentActivity(
+        searchId,
+        (chunk: AgentChunk) => {
+          console.log('[Home] Received chunk:', chunk.chunk);
+          setAgentChunks((prev) => [...prev, chunk.chunk]);
+        },
+        (error) => {
+          console.error('[Home] Subscription error:', error);
+          setIsStreaming(false);
+        }
+      );
+
+      // Step 3: Poll for final results
+      console.log('[Home] Polling for results...');
+      const maxAttempts = 30;
+      const pollInterval = 2000; // 2 seconds
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+        const results = await AppSync.getSearchResults(searchId);
+        console.log(`[Home] Poll attempt ${attempt}:`, results.status);
+
+        if (results.status === 'complete') {
+          console.log('[Home] Search complete!');
+          setIsStreaming(false);
+
+          if (results.results && results.results.hospitals) {
+            const hospitals = results.results.hospitals.map(adaptAppSyncHospital);
+            console.log(`[Home] Found ${hospitals.length} hospitals`);
+            setSearchResults(hospitals);
+            setGlobalSearchResults(hospitals);
+          }
+
+          // Cleanup subscription
+          if (subscriptionRef.current) {
+            subscriptionRef.current.unsubscribe();
+            subscriptionRef.current = null;
+          }
+
+          break;
+        }
+
+        if (results.status === 'error') {
+          throw new Error(results.error || 'Search failed');
+        }
+
+        // Still processing, continue polling
+      }
     } catch (error) {
-      console.error("Search failed:", error);
+      console.error('[Home] Search failed:', error);
       setSearchResults([]);
       setGlobalSearchResults([]);
       setGlobalSearchId(null);
+      setIsStreaming(false);
+      
+      // Cleanup subscription
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
     } finally {
       setIsLoading(false);
     }
@@ -138,12 +301,17 @@ export function Home() {
             exit={{ opacity: 0 }}
             className="max-w-7xl mx-auto px-6 pb-12"
           >
+            {/* Agent Activity Stream */}
+            {(isStreaming || agentChunks.length > 0) && (
+              <AgentActivityStream chunks={agentChunks} isActive={isStreaming} />
+            )}
+
             {isLoading ? (
               <div className="text-center py-12">
                 <LoadingSpinner className="w-16 h-16 text-blue-600" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Searching...</h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2 mt-4">Searching...</h3>
                 <p className="text-gray-600">
-                  Please wait while we find the best hospitals for you
+                  AI agent is analyzing hospitals for you
                 </p>
               </div>
             ) : searchResults.length > 0 ? (

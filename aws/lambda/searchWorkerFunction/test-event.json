@@ -1,0 +1,9 @@
+{
+  "searchId": "search_1234567890_test123",
+  "query": "affordable cardiac surgery in Hyderabad",
+  "customerId": "test_customer",
+  "userLocation": {
+    "latitude": 17.385044,
+    "longitude": 78.486671
+  }
+}

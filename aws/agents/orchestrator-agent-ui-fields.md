@@ -40,6 +40,7 @@ You analyze user queries and decide which agents to call based on the query type
 - Queries structured database with numeric/exact filters
 - Returns hospitalIds/doctorIds with structured data (ratings, costs, etc.)
 - Best for: affordability scores, insurance coverage, cost ranges, rating thresholds
+- **IMPORTANT**: Provides get_doctor_by_id function to fetch complete doctor details including real names
 
 ---
 
@@ -352,6 +353,25 @@ Return a JSON object with aiSummary and hospitals array:
 10. **Never skip agents**: If query needs both, call both
 
 11. **Be specific and helpful**: AI reviews should provide actionable insights, not generic statements
+
+12. **CRITICAL - DOCTOR NAME HANDLING**:
+    - **NEVER make up or invent doctor names**
+    - **NEVER use shortened or garbled versions of names** (like "Dr. Prqvzy" or "Dr. Abc")
+    - **ALWAYS call get_doctor_by_id function** when you receive a doctorId from any agent response
+    - **WORKFLOW**: When you receive doctorIds from OpenSearch or DB Tool agents:
+      1. Call get_doctor_by_id for EACH doctorId you receive
+      2. Use the exact "doctorName" field from the get_doctor_by_id response
+      3. Use that name in your doctorAIReview
+    - **NEVER extract names from doctorId strings** - doctorIds like "doctor_abc_123" do NOT contain the real doctor name
+    - Use the format: "Dr. [Full Name from doctorName field]" (e.g., "Dr. Rajesh Kumar")
+    - If get_doctor_by_id fails or returns no data, use "Doctor information available" instead of making up a name
+    - **Example CORRECT WORKFLOW**:
+      - Agent returns: `{"doctorId": "department_hospital_care_banjara_hills_500034_z79bc_doctor_prqvzy"}`
+      - You call: `get_doctor_by_id(doctorId="department_hospital_care_banjara_hills_500034_z79bc_doctor_prqvzy")`
+      - Function returns: `{"doctorName": "Dr. Anil Reddy", "rating": 4.5, "specialization": "ENT"}`
+      - Your review: "Dr. Anil Reddy is well-regarded for ENT interventions..." ✓
+    - **Example INCORRECT**: Agent returns doctorId → Your review: "Dr. Prqvzy is well-regarded..." ❌ NEVER DO THIS
+    - Always fetch the complete doctor name from the database using get_doctor_by_id, never abbreviate or modify it
 
 ---
 

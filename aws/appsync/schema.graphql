@@ -1,0 +1,97 @@
+# AppSync GraphQL Schema for Hospital Search Streaming
+# This schema enables real-time streaming of AI agent activity during hospital search
+
+# Input Types
+input LocationInput {
+  latitude: Float!
+  longitude: Float!
+}
+
+# Output Types
+type SearchInitiated {
+  searchId: ID!
+  status: String!
+}
+
+type AgentChunk {
+  searchId: ID!
+  chunk: String!
+  timestamp: AWSDateTime!
+}
+
+type Hospital {
+  id: ID!
+  name: String!
+  location: String!
+  rating: Float!
+  reviewCount: Int!
+  imageUrl: String
+  description: String
+  specialties: [String!]!
+  acceptedInsurance: [String!]!
+  avgCostRange: CostRange!
+  aiRecommendation: String!
+  insuranceCoveragePercent: Int!
+  trustScore: Int!
+  verificationBadge: String!
+  coordinates: Coordinates
+  distance: Float
+  topDoctorIds: [ID!]!
+}
+
+type CostRange {
+  min: Int!
+  max: Int!
+}
+
+type Coordinates {
+  latitude: Float!
+  longitude: Float!
+}
+
+type SearchResultsData {
+  aiSummary: String!
+  hospitals: [Hospital!]!
+}
+
+type SearchResults {
+  searchId: ID!
+  status: String!
+  results: SearchResultsData
+  error: String
+}
+
+# Mutations
+type Mutation {
+  # Initiate search - triggers InvokerLambda
+  initiateSearch(
+    query: String!
+    customerId: String
+    userLocation: LocationInput
+  ): SearchInitiated
+  
+  # Publish agent activity chunk - called by WorkerLambda
+  publishAgentChunk(
+    searchId: ID!
+    chunk: String!
+  ): AgentChunk
+}
+
+# Queries
+type Query {
+  # Get final search results from DynamoDB
+  getSearchResults(searchId: ID!): SearchResults
+}
+
+# Subscriptions
+type Subscription {
+  # Subscribe to agent activity for a specific search
+  onAgentActivity(searchId: ID!): AgentChunk
+    @aws_subscribe(mutations: ["publishAgentChunk"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}

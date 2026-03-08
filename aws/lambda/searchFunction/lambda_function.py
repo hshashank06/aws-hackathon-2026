@@ -321,7 +321,8 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
     Raises:
         Exception: If agent invocation fails after all retries
     """
-    session_id = customer_id or f"session_{uuid.uuid4().hex[:12]}"
+    # Hardcode session ID for consistent testing and conversation context
+    session_id = "1448d478-2001-7004-684a-512247f811da"
     
     for attempt in range(1, max_retries + 1):
         try:

@@ -673,6 +673,81 @@ def get_hospital_id_by_name(hospital_name):
         logger.error(f"get_hospital_id_by_name execution time: {time.time() - start:.3f}s (failed)")
         raise Exception(f"Error fetching hospital ID by name: {str(e)}")
 
+def get_doctor_by_id(doctor_id):
+    """
+    Get complete doctor details including doctorName by doctorId.
+    Use this function to retrieve the actual doctor name when you have a doctorId.
+    CRITICAL: Always call this function before mentioning a doctor in your response to get their real name.
+    
+    Args:
+        doctor_id: The unique identifier for the doctor
+    
+    Returns:
+        Doctor details including doctorId, doctorName, rating, specialization, hospitalName
+    """
+    start = time.time()
+    try:
+        if not doctor_id:
+            raise ValueError("doctor_id is required")
+        
+        # Get doctor from DynamoDB
+        doctor_response = DOCTOR_TABLE.get_item(
+            Key={'doctorId': doctor_id},
+            ProjectionExpression='doctorId, doctorName, rating, departmentId, specialty, yearsOfExperience'
+        )
+        doctor = doctor_response.get('Item')
+        
+        if not doctor:
+            logger.info(f"Doctor not found: {doctor_id}")
+            logger.info(f"get_doctor_by_id execution time: {time.time() - start:.3f}s")
+            return []
+        
+        # Get department to find hospital and specialization
+        dept_id = doctor.get('departmentId', '')
+        hospital_name = 'Unknown'
+        hospital_id = 'Unknown'
+        specialization = doctor.get('specialty', 'General')
+        
+        if dept_id:
+            try:
+                dept_response = DEPARTMENT_TABLE.get_item(
+                    Key={'departmentId': dept_id},
+                    ProjectionExpression='hospitalId, departmentName'
+                )
+                dept = dept_response.get('Item', {})
+                hospital_id = dept.get('hospitalId', 'Unknown')
+                
+                # Use department name as specialization if specialty field is empty
+                if not specialization or specialization == 'General':
+                    specialization = dept.get('departmentName', 'General')
+                
+                # Get hospital name
+                if hospital_id != 'Unknown':
+                    hosp_response = HOSPITAL_TABLE.get_item(
+                        Key={'hospitalId': hospital_id},
+                        ProjectionExpression='hospitalName'
+                    )
+                    hosp = hosp_response.get('Item', {})
+                    hospital_name = hosp.get('hospitalName', 'Unknown')
+            except Exception as e:
+                logger.error(f"Error fetching department/hospital for doctor {doctor_id}: {str(e)}")
+        
+        result = [{
+            'doctorId': doctor.get('doctorId'),
+            'doctorName': doctor.get('doctorName'),
+            'rating': float(doctor.get('rating', 0)),
+            'specialization': specialization,
+            'yearsOfExperience': int(doctor.get('yearsOfExperience', 0)) if doctor.get('yearsOfExperience') else None,
+            'hospitalName': hospital_name,
+            'hospitalId': hospital_id
+        }]
+        
+        logger.info(f"get_doctor_by_id execution time: {time.time() - start:.3f}s")
+        return result
+    except Exception as e:
+        logger.error(f"get_doctor_by_id execution time: {time.time() - start:.3f}s (failed)")
+        raise Exception(f"Error fetching doctor by ID: {str(e)}")
+
 def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
     """
     Returns doctorId and details given doctor name and/or doctorId.
@@ -915,6 +990,12 @@ def lambda_handler(event, context):
             if not doctor_name and not doctor_id:
                 raise ValueError("Either doctor_name or doctor_id is required")
             result = get_doctor_id_by_name(doctor_name, doctor_id)
+        
+        elif operation == 'get_doctor_by_id':
+            doctor_id = parameters.get('doctorId') or parameters.get('doctor_id')
+            if not doctor_id:
+                raise ValueError("doctorId is required")
+            result = get_doctor_by_id(doctor_id)
         
         else:
             raise ValueError(f"Unknown operation: {operation}")

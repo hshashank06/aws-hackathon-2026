@@ -192,6 +192,8 @@ export function HospitalDetail() {
                     // Replace patterns like "Dr. doctor_xyz" or "doctor_xyz" with actual name
                     aiReview = aiReview.replace(new RegExp(`Dr\\.?\\s*${doctorId}`, 'gi'), doctorName);
                     aiReview = aiReview.replace(new RegExp(doctorId, 'gi'), doctorName);
+                    
+              
                   }
                   
                   // Extract qualifications from 'about' field since Doctor table doesn't have qualifications field
