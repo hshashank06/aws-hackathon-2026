@@ -168,7 +168,7 @@ export function Home() {
         searchId,
         (chunk: AgentChunk) => {
           console.log('[Home] Received chunk:', chunk.chunk);
-          setAgentChunks((prev) => [...prev, chunk.chunk]);
+          setAgentChunks((prev: string[]) => [...prev, chunk.chunk]);
         },
         (error) => {
           console.error('[Home] Subscription error:', error);

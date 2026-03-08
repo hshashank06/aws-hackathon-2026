@@ -1,5 +1,25 @@
 import { Hospital, mockHospitals, Doctor } from "../data/mockData";
-import type { SearchResponse, EnrichedHospital, EnrichedDoctor } from "../../api/searchResponseTypes";
+
+// API Response Types
+interface SearchResponse {
+  success: boolean;
+  cached: boolean;
+  responseTime: string;
+  userIntent: {
+    category: string;
+    keywords: string[];
+  };
+  results: {
+    aiSummary: string;
+    hospitals: any[];
+    totalMatches: number;
+  };
+  metadata: {
+    searchId: string;
+    timestamp: string;
+    aiModel: string;
+  };
+}
 
 // API Configuration
 const API_BASE_URL = "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com";
@@ -235,21 +255,6 @@ async function pollSearchStatus(searchId: string, maxAttempts: number = 30): Pro
   }
 
   throw new Error("Search timeout: Results not ready after maximum polling attempts");
-}
-
-/**
- * Call the real Lambda search endpoint (combines initiate + poll)
- */
-async function callSearchAPI(query: string, customerId?: string): Promise<SearchResponse> {
-  // Step 1: Initiate search
-  const { searchId, status } = await initiateSearch(query, customerId);
-  
-  if (status === "error") {
-    throw new Error("Failed to initiate search");
-  }
-
-  // Step 2: Poll for results
-  return await pollSearchStatus(searchId);
 }
 
 /**

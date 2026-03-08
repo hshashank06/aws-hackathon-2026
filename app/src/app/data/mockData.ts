@@ -1,7 +1,7 @@
 export interface Review {
   id: string;
   patientName: string;
-  rating: number;
+  rating?: number;  // Optional to match AppSync schema
   date: string;
   treatment: string;
   cost: number;
@@ -37,6 +37,7 @@ export interface Hospital {
   doctors: Doctor[];
   reviews: Review[];
   aiRecommendation: string;
+  hospitalAIReview?: string;  // AI-generated hospital review from orchestrator
   avgCostRange: {
     min: number;
     max: number;

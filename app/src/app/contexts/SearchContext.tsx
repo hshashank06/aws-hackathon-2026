@@ -8,7 +8,7 @@ interface SearchContextType {
   isStreaming: boolean;
   setSearchResults: (hospitals: Hospital[]) => void;
   setSearchId: (id: string | null) => void;
-  setAgentChunks: (chunks: string[]) => void;
+  setAgentChunks: React.Dispatch<React.SetStateAction<string[]>>;
   setIsStreaming: (streaming: boolean) => void;
   getHospitalById: (id: string) => Hospital | null;
 }
