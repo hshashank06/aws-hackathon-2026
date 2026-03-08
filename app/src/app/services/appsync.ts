@@ -8,9 +8,9 @@ import { generateClient } from 'aws-amplify/api';
 
 // AppSync Configuration
 const APPSYNC_CONFIG = {
-  endpoint: 'https://xg5bjurpsbgfda2nufr6c46n7e.appsync-api.us-east-1.amazonaws.com/graphql',
-  region: 'us-east-1',
-  apiKey: 'da2-ezoxtcpclffrdkbysmv22sjiei',
+  endpoint: import.meta.env.VITE_APPSYNC_ENDPOINT,
+  region: import.meta.env.VITE_APPSYNC_REGION || 'us-east-1',
+  apiKey: import.meta.env.VITE_APPSYNC_API_KEY,
 };
 
 // Configure Amplify
