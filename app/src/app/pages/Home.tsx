@@ -79,6 +79,19 @@ export function Home() {
    * Convert AppSync Hospital to UI Hospital format
    */
   const adaptAppSyncHospital = (h: AppSync.Hospital): Hospital => {
+    // Parse doctorAIReviews if it's a JSON string
+    let doctorAIReviews = {};
+    if (h.doctorAIReviews) {
+      try {
+        doctorAIReviews = typeof h.doctorAIReviews === 'string' 
+          ? JSON.parse(h.doctorAIReviews) 
+          : h.doctorAIReviews;
+      } catch (error) {
+        console.error('[Home] Failed to parse doctorAIReviews:', error);
+        doctorAIReviews = {};
+      }
+    }
+
     return {
       id: h.id,
       name: h.name,
@@ -99,7 +112,7 @@ export function Home() {
       topDoctorIds: h.topDoctorIds,
       doctors: [], // Lazy loaded
       reviews: h.reviews || [], // Include reviews from AppSync
-      doctorAIReviews: h.doctorAIReviews || {},
+      doctorAIReviews: doctorAIReviews,
     };
   };
 
