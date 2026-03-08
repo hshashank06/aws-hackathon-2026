@@ -42,13 +42,13 @@ search_results_table = dynamodb.Table(os.environ.get("DYNAMODB_TABLE_NAME", "Sea
 
 
 AGENT_ID = "ASPMAO88W7"
-AGENT_ALIAS_ID = "I2FYS2ELU3"
+AGENT_ALIAS_ID = "BXNC6XCUEC"
 
 REGION = "us-east-1"
 APPSYNC_API_ID = "xuwjgn5z4zgjfl474tpyoyuoza"
 # ---------- constants ----------
 BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "I2FYS2ELU3")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "BXNC6XCUEC")
 API_GATEWAY_BASE_URL = os.environ.get("API_GATEWAY_BASE_URL", "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com")
 APPSYNC_ENDPOINT = "https://xg5bjurpsbgfda2nufr6c46n7e.appsync-api.us-east-1.amazonaws.com/graphql"
 APPSYNC_API_KEY = "da2-ezoxtcpclffrdkbysmv22sjiei"
@@ -392,9 +392,15 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     insurance_coverage_raw = hospital_data.get("insuranceCoverage", 0)
     insurance_coverage_percent = int(float(insurance_coverage_raw) * 100) if insurance_coverage_raw else 0
     
-    # Doctor IDs and AI reviews
+    # Doctor IDs and doctors array (new format for AppSync)
     top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]
-    doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in hospital_llm.get("doctors", [])}
+    doctors_array = [
+        {
+            "doctorId": d["doctorId"],
+            "doctorAIReview": d.get("doctorAIReview", "")
+        }
+        for d in hospital_llm.get("doctors", [])
+    ]
     
     # Format reviews
     formatted_reviews = []
@@ -470,9 +476,8 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
         "verificationBadge": "gold",
         "hospitalAIReview": hospital_llm.get("hospitalAIReview", ""),
         "reviews": formatted_reviews,
-        "doctors": [],
+        "doctors": doctors_array,  # New format: array of {doctorId, doctorAIReview}
         "topDoctorIds": top_doctor_ids,
-        "doctorAIReviews": doctor_ai_reviews,
         "acceptedInsurance": ["Blue Cross", "United Health", "Aetna", "Medicare"]
     }
 
