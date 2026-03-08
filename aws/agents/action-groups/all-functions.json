@@ -109,7 +109,7 @@
   },
   {
     "name": "get_doctor_id_by_name",
-    "description": "Get doctorId and details given doctor name and/or doctorId. Use this when you need to resolve a doctor name to their ID for JSON responses, or to get details for a specific doctorId. Supports partial name matching (case-insensitive). Returns doctorId, doctorName, rating, hospitalName, and hospitalId. Accepts either doctor_name OR doctor_id (or both).",
+    "description": "Get doctorId and complete details given doctor name and/or doctorId. This is the UNIFIED function for ALL doctor lookups. Use this when you need to resolve a doctor name to their ID for JSON responses, OR to get complete details for a specific doctorId. Supports partial name matching (case-insensitive). Returns doctorId, doctorName, rating, specialization, yearsOfExperience, hospitalName, and hospitalId. Accepts either doctor_name OR doctor_id (or both). CRITICAL: Always call this function before mentioning a doctor in your response to get their real name.",
     "parameters": {
       "doctor_name": {
         "description": "Doctor name or partial name to search for. Case-insensitive partial matching supported. Examples: 'Dr. Rajesh', 'Kumar', 'Sharma'. Optional if doctor_id is provided.",
@@ -117,7 +117,23 @@
         "required": false
       },
       "doctor_id": {
-        "description": "Exact doctor ID to look up. Format: 'department_hospital_..._doctor_...'. Optional if doctor_name is provided.",
+        "description": "Exact doctor ID to look up. Format: 'department_hospital_..._doctor_...'. Use this to get complete details including real name for a known doctorId. Optional if doctor_name is provided.",
+        "type": "string",
+        "required": false
+      }
+    }
+  },
+  {
+    "name": "get_hospital_doctors",
+    "description": "Get doctors for a specific hospital, optionally filtered by department. Use this when you need to find doctors at a hospital. If department_name is provided, returns doctors in that specialty only. If department_name is omitted, returns top 5 doctors across all departments sorted by rating. Returns doctor details including doctorId, doctorName, rating, specialization, hospitalName, and hospitalId.",
+    "parameters": {
+      "hospital_id": {
+        "description": "The unique identifier for the hospital (e.g., 'hospital_apollo_hospitals_jubilee_hills_500033'). This is the hospitalId you received from other functions.",
+        "type": "string",
+        "required": true
+      },
+      "department_name": {
+        "description": "Optional: Full department name with 'Department of' prefix. If provided, filters doctors to this specialty only. If omitted, returns top doctors across all departments. Examples: 'Department of Cardiology', 'Department of Orthopedics', 'Department of Neurology', 'Department of Oncology', 'Department of Gastroenterology'.",
         "type": "string",
         "required": false
       }

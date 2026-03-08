@@ -1,0 +1,19 @@
+{
+  "arguments": {
+    "query": "I need a good hospital for cardiac surgery with experienced doctors",
+    "customerId": "test-customer-123",
+    "userLocation": {
+      "latitude": 17.385044,
+      "longitude": 78.486671
+    }
+  },
+  "identity": {
+    "sourceIp": ["192.0.2.1"],
+    "userArn": "arn:aws:iam::123456789012:user/appsync"
+  },
+  "request": {
+    "headers": {
+      "x-api-key": "da2-test-api-key"
+    }
+  }
+}

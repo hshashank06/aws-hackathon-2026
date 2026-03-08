@@ -321,7 +321,8 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
     Raises:
         Exception: If agent invocation fails after all retries
     """
-    session_id = customer_id or f"session_{uuid.uuid4().hex[:12]}"
+    # Hardcode session ID for consistent testing and conversation context
+    session_id = "1448d478-2001-7004-684a-512247f811da"
     
     for attempt in range(1, max_retries + 1):
         try:
@@ -574,25 +575,31 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
     location = location_parts[1].strip() if len(location_parts) > 1 else address
     
     # Get insurance coverage percentage directly from Hospital table
-    insurance_coverage_percent = hospital_data.get("insuranceCoverage", 0)
+    # DynamoDB stores as decimal (0.7), convert to percentage (70)
+    insurance_coverage_raw = hospital_data.get("insuranceCoverage", 0)
+    insurance_coverage_percent = int(float(insurance_coverage_raw) * 100) if insurance_coverage_raw else 0
     
-    # Extract doctor IDs from LLM response
+    # Extract doctor IDs and create doctors array (new format for AppSync)
     top_doctor_ids = [d["doctorId"] for d in hospital_llm.get("doctors", [])]
-    
-    # Create a mapping of doctorId -> AI review
-    doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in hospital_llm.get("doctors", [])}
+    doctors_array = [
+        {
+            "doctorId": d["doctorId"],
+            "doctorAIReview": d.get("doctorAIReview", "")
+        }
+        for d in hospital_llm.get("doctors", [])
+    ]
     
     # Log for debugging
     logger.info(
-        "Building doctorAIReviews mapping | HospitalId=%s | DoctorsInLLM=%d | MappingSize=%d",
+        "Building doctors array | HospitalId=%s | DoctorsInLLM=%d | ArraySize=%d",
         hospital_id,
         len(hospital_llm.get("doctors", [])),
-        len(doctor_ai_reviews)
+        len(doctors_array)
     )
-    if doctor_ai_reviews:
-        logger.info("Sample doctorAIReviews keys: %s", list(doctor_ai_reviews.keys())[:3])
+    if doctors_array:
+        logger.info("Sample doctor IDs: %s", [d["doctorId"] for d in doctors_array[:3]])
     else:
-        logger.warning("doctorAIReviews is EMPTY | hospital_llm.doctors=%s", hospital_llm.get("doctors", []))
+        logger.warning("doctors array is EMPTY | hospital_llm.doctors=%s", hospital_llm.get("doctors", []))
     
     # Format reviews for UI
     formatted_reviews = []
@@ -701,11 +708,10 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
         "insuranceCoveragePercent": insurance_coverage_percent,
         "trustScore": 85,  # Default
         "verificationBadge": "gold",  # Default
-        "aiRecommendation": hospital_llm.get("hospitalAIReview", ""),
+        "hospitalAIReview": hospital_llm.get("hospitalAIReview", ""),  # AI-generated hospital review
         "reviews": formatted_reviews,  # Formatted reviews for UI
-        "doctors": [],  # Empty - will be lazy loaded
+        "doctors": doctors_array,  # Array of {doctorId, doctorAIReview}
         "topDoctorIds": top_doctor_ids,  # For lazy loading
-        "doctorAIReviews": doctor_ai_reviews,  # AI reviews for each doctor
         "acceptedInsurance": ["Blue Cross", "United Health", "Aetna", "Medicare"]  # Default
     }
 
@@ -1501,7 +1507,8 @@ def get_hospital_doctors(event: dict) -> dict:
         # Get doctor IDs and AI reviews from LLM response
         doctors_llm = hospital_llm.get("doctors", [])
         doctor_ids = [d["doctorId"] for d in doctors_llm]
-        doctor_ai_reviews = {d["doctorId"]: d.get("doctorAIReview", "") for d in doctors_llm}
+        # Create a map for quick lookup of AI reviews
+        doctor_ai_reviews_map = {d["doctorId"]: d.get("doctorAIReview", "") for d in doctors_llm}
         
         if not doctor_ids:
             logger.info("No doctors found for hospital | HospitalId=%s", hospital_id)
@@ -1573,7 +1580,7 @@ def get_hospital_doctors(event: dict) -> dict:
                 "rating": doctor_data.get("rating", 4.0),
                 "reviewCount": len(reviews),  # Calculate from fetched reviews
                 "imageUrl": "/default-doctor.jpg",
-                "aiSummary": doctor_ai_reviews.get(doctor_id, ""),  # Get AI review from LLM response
+                "aiSummary": doctor_ai_reviews_map.get(doctor_id, ""),  # Get AI review from LLM response
                 "reviews": reviews[:1]  # First review
             }
             

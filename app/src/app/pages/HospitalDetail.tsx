@@ -192,6 +192,8 @@ export function HospitalDetail() {
                     // Replace patterns like "Dr. doctor_xyz" or "doctor_xyz" with actual name
                     aiReview = aiReview.replace(new RegExp(`Dr\\.?\\s*${doctorId}`, 'gi'), doctorName);
                     aiReview = aiReview.replace(new RegExp(doctorId, 'gi'), doctorName);
+                    
+              
                   }
                   
                   // Extract qualifications from 'about' field since Doctor table doesn't have qualifications field
@@ -553,7 +555,7 @@ export function HospitalDetail() {
                 <h2 className="text-xl font-semibold text-gray-900">AI Analysis</h2>
               </div>
               <div className="prose max-w-none text-gray-700">
-                <ReactMarkdown>{hospital.aiRecommendation}</ReactMarkdown>
+                <ReactMarkdown>{hospital.hospitalAIReview || hospital.aiRecommendation}</ReactMarkdown>
               </div>
             </motion.div>
 

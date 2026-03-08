@@ -45,8 +45,12 @@ export function PastReviews() {
     setLoading(true)
     setError(null)
 
+    console.log("[PastReviews] Fetching reviews for customerId:", user.userId)
+
     getReviewsByCustomer(user.userId)
       .then((items) => {
+        console.log("[PastReviews] Received reviews:", items.length, "items")
+        console.log("[PastReviews] Raw items:", items)
         const sorted = [...items].sort((a, b) =>
           (b.createdAt ?? "").localeCompare(a.createdAt ?? "")
         )

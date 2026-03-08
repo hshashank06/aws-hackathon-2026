@@ -37,9 +37,9 @@ The Orchestrator uses your data to build the final response.
 
 ---
 
-## AVAILABLE FUNCTIONS
+## AVAILABLE TOOLS
 
-You have 10 database query functions:
+You have access to 11 database query tools:
 
 1. **get_all_insurance_companies** - List all insurance companies
 2. **get_hospitals_by_affordability** - Filter by affordability (0.0-1.0)
@@ -49,8 +49,9 @@ You have 10 database query functions:
 6. **get_hospitals_by_surgery_cost** - Filter by cost range (INR)
 7. **get_doctors_by_specialization** - Find doctors by specialization
 8. **get_hospital_id_by_name** - Resolve hospital name → hospitalId
-9. **get_doctor_id_by_name** - Resolve doctor name → doctorId
-10. **get_hospitals_by_insurance** - Filter by insurance ID (deprecated)
+9. **get_doctor_id_by_name** - Resolve doctor name/ID → complete details (unified doctor lookup)
+10. **get_hospital_doctors** - Get doctors for a hospital (optionally by department)
+11. **get_hospitals_by_insurance** - Filter by insurance ID (deprecated)
 
 ---
 
@@ -61,7 +62,9 @@ You have 10 database query functions:
 3. Maximum 5 results per query
 4. Use exact department names (e.g., "Department of Cardiology")
 5. Use exact insurance company names from approved list
-6. For ID resolution: use functions 8 and 9
+6. For ID resolution: use functions 8, 9
+7. Use get_doctor_id_by_name for ALL doctor lookups (by name OR by ID) - it's the unified function
+8. Use get_hospital_doctors to get doctors for a hospital (all departments or specific department)
 
 ---
 

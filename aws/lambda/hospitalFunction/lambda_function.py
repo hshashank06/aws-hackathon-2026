@@ -64,6 +64,8 @@ class DecimalEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
         if isinstance(obj, Decimal):
             return int(obj) if obj % 1 == 0 else float(obj)
+        if isinstance(obj, set):
+            return list(obj)  # Convert sets to lists for JSON serialization
         return super().default(obj)
 
 
@@ -165,13 +167,21 @@ def get_hospital(event: dict) -> dict:
 
     try:
         result = table.get_item(Key={PARTITION_KEY: hospital_id})
-    except ClientError:
-        logger.exception("DynamoDB get_item failed")
+    except ClientError as e:
+        logger.exception("DynamoDB get_item failed | HospitalId=%s | Error=%s", hospital_id, str(e))
         return _error(500, "Failed to retrieve hospital.")
+    except Exception as e:
+        logger.exception("Unexpected error in get_hospital | HospitalId=%s | Error=%s", hospital_id, str(e))
+        return _error(500, "Internal server error.")
 
     item = result.get("Item")
     if not item:
         return _error(404, f"Hospital '{hospital_id}' not found.")
+
+    # Ensure insuranceCoverage field exists with default value if missing
+    if "insuranceCoverage" not in item:
+        item["insuranceCoverage"] = 0
+        logger.warning("Hospital missing insuranceCoverage field, defaulting to 0 | HospitalId=%s", hospital_id)
 
     return _ok(item)
 

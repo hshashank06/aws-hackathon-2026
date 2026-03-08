@@ -1,5 +1,25 @@
 import { Hospital, mockHospitals, Doctor } from "../data/mockData";
-import type { SearchResponse, EnrichedHospital, EnrichedDoctor } from "../../api/searchResponseTypes";
+
+// API Response Types
+interface SearchResponse {
+  success: boolean;
+  cached: boolean;
+  responseTime: string;
+  userIntent: {
+    category: string;
+    keywords: string[];
+  };
+  results: {
+    aiSummary: string;
+    hospitals: any[];
+    totalMatches: number;
+  };
+  metadata: {
+    searchId: string;
+    timestamp: string;
+    aiModel: string;
+  };
+}
 
 // API Configuration
 const API_BASE_URL = "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com";
@@ -41,7 +61,8 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
           max: typeof enriched.avgCostRange.max === 'number' ? enriched.avgCostRange.max : 0,
         }
       : { min: 0, max: 0 },
-    aiRecommendation: enriched.aiRecommendation || "",
+    aiRecommendation: enriched.hospitalAIReview || enriched.aiRecommendation || "",
+    hospitalAIReview: enriched.hospitalAIReview || enriched.aiRecommendation || "",
     doctors: Array.isArray(enriched.doctors) ? enriched.doctors : [],
     reviews: Array.isArray(enriched.reviews) ? enriched.reviews : [],
     trustScore: typeof enriched.trustScore === 'number' ? enriched.trustScore : 85,
@@ -50,7 +71,13 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
       ? enriched.insuranceCoveragePercent 
       : 0,
     topDoctorIds: Array.isArray(enriched.topDoctorIds) ? enriched.topDoctorIds : [],
-    doctorAIReviews: enriched.doctorAIReviews || {},
+    // Convert doctors array to doctorAIReviews map for backward compatibility
+    doctorAIReviews: enriched.doctors 
+      ? enriched.doctors.reduce((acc: Record<string, string>, doctor: any) => {
+          acc[doctor.doctorId] = doctor.doctorAIReview;
+          return acc;
+        }, {})
+      : {},
     // Location and distance fields
     coordinates: enriched.coordinates || undefined,
     distance: typeof enriched.distance === 'number' ? enriched.distance : undefined,
@@ -228,21 +255,6 @@ async function pollSearchStatus(searchId: string, maxAttempts: number = 30): Pro
   }
 
   throw new Error("Search timeout: Results not ready after maximum polling attempts");
-}
-
-/**
- * Call the real Lambda search endpoint (combines initiate + poll)
- */
-async function callSearchAPI(query: string, customerId?: string): Promise<SearchResponse> {
-  // Step 1: Initiate search
-  const { searchId, status } = await initiateSearch(query, customerId);
-  
-  if (status === "error") {
-    throw new Error("Failed to initiate search");
-  }
-
-  // Step 2: Poll for results
-  return await pollSearchStatus(searchId);
 }
 
 /**

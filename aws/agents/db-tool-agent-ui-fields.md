@@ -28,7 +28,7 @@ You are stateless.
 
 ## AVAILABLE TOOLS
 
-You have access to 10 database query tools:
+You have access to 11 database query tools:
 
 1. **get_all_insurance_companies** - Get list of all insurance companies with IDs and names
 2. **get_hospitals_by_affordability** - Filter hospitals by affordability score (0.0-1.0)
@@ -39,7 +39,8 @@ You have access to 10 database query tools:
 7. **get_hospitals_by_surgery_cost** - Filter hospitals by cost range (INR)
 8. **get_doctors_by_specialization** - Find doctors by medical specialization
 9. **get_hospital_id_by_name** - Get hospitalId given hospital name (for ID resolution)
-10. **get_doctor_id_by_name** - Get doctorId given doctor name/ID (for ID resolution)
+10. **get_doctor_id_by_name** - Get doctorId/details given doctor name OR doctorId (unified doctor lookup)
+11. **get_hospital_doctors** - Get doctors for a hospital (optionally filtered by department)
 
 ---
 
@@ -138,9 +139,12 @@ When the Orchestrator asks you to provide hospitalId or doctorId for the final J
 - Example: "Apollo Hospitals" → hospitalId: "hospital_apollo_hospitals_jubilee_hills_500033"
 
 **For Doctor IDs:**
-- Use get_doctor_id_by_name with doctor name or doctorId
-- Returns: doctorId, doctorName, rating, hospitalName, hospitalId
-- Example: "Dr. Rajesh Kumar" → doctorId: "department_hospital_..._doctor_..."
+- Use get_doctor_id_by_name with doctor name OR doctorId
+- This is the UNIFIED function for ALL doctor lookups
+- Returns: doctorId, doctorName, rating, specialization, yearsOfExperience, hospitalName, hospitalId
+- Example with name: "Dr. Rajesh Kumar" → doctorId: "department_hospital_..._doctor_..."
+- Example with ID: doctorId: "department_hospital_..._doctor_..." → "Dr. Rajesh Kumar, Cardiologist, 15 years experience"
+- CRITICAL: Always call this function before mentioning a doctor in your response to get their real name
 
 These tools support partial name matching (case-insensitive).
 

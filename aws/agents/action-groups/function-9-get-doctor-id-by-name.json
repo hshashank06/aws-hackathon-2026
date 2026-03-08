@@ -1,6 +1,6 @@
 {
   "name": "get_doctor_id_by_name",
-  "description": "Get doctorId and details given doctor name and/or doctorId. Use this when you need to resolve a doctor name to their ID for JSON responses, or to get complete details for a specific doctorId. Supports partial name matching (case-insensitive). Returns doctorId, doctorName, rating, hospitalName, and hospitalId (max 5 results sorted by rating). Accepts either doctor_name OR doctor_id (or both for validation). Essential for getting the exact doctorId needed for final JSON output to the user.",
+  "description": "Get doctorId and complete details given doctor name and/or doctorId. This is the UNIFIED function for ALL doctor lookups. Use this when you need to resolve a doctor name to their ID for JSON responses, OR to get complete details for a specific doctorId. Supports partial name matching (case-insensitive). Returns doctorId, doctorName, rating, specialization, yearsOfExperience, hospitalName, and hospitalId (max 5 results sorted by rating). Accepts either doctor_name OR doctor_id (or both for validation). Essential for getting the exact doctorId needed for final JSON output AND for getting complete doctor details including real names. CRITICAL: Always call this function before mentioning a doctor in your response to get their real name.",
   "parameters": {
     "doctor_name": {
       "description": "Doctor name or partial name to search for. Case-insensitive partial matching supported. Examples: 'Dr. Rajesh', 'Kumar', 'Sharma', 'Priya'. Optional if doctor_id is provided.",
@@ -8,7 +8,7 @@
       "required": false
     },
     "doctor_id": {
-      "description": "Exact doctor ID to look up. Format: 'department_hospital_..._doctor_...'. Use this to get complete details for a known doctorId. Optional if doctor_name is provided.",
+      "description": "Exact doctor ID to look up. Format: 'department_hospital_..._doctor_...'. Use this to get complete details including real name for a known doctorId. Optional if doctor_name is provided.",
       "type": "string",
       "required": false
     }

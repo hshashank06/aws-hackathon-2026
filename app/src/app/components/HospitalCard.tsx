@@ -209,7 +209,7 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
           </div>
 
           {/* AI Recommendation */}
-          {hospital.aiRecommendation && (
+          {hospital.hospitalAIReview && (
             <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-100">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
@@ -220,7 +220,7 @@ export function HospitalCard({ hospital }: HospitalCardProps) {
                 </span>
               </div>
               <div className="prose prose-sm max-w-none text-gray-600">
-                <ReactMarkdown>{hospital.aiRecommendation}</ReactMarkdown>
+                <ReactMarkdown>{hospital.hospitalAIReview}</ReactMarkdown>
               </div>
             </div>
           )}
