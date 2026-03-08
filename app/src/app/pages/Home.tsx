@@ -14,19 +14,15 @@ export function Home() {
     searchResults: globalSearchResults, 
     setSearchResults: setGlobalSearchResults, 
     setSearchId: setGlobalSearchId,
-    agentChunks: globalAgentChunks,
-    setAgentChunks: setGlobalAgentChunks,
-    isStreaming: globalIsStreaming,
-    setIsStreaming: setGlobalIsStreaming
+    agentChunks,
+    setAgentChunks,
+    isStreaming,
+    setIsStreaming
   } = useSearch();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Hospital[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Use context for streaming state (persisted across navigation)
-  const [agentChunks, setAgentChunks] = useState<string[]>(globalAgentChunks);
-  const [isStreaming, setIsStreaming] = useState(globalIsStreaming);
   const subscriptionRef = useRef<any>(null);
 
   // Restore search results from context when component mounts
@@ -35,22 +31,7 @@ export function Home() {
       setSearchResults(globalSearchResults);
       setHasSearched(true);
     }
-    // Restore agent chunks
-    if (globalAgentChunks && globalAgentChunks.length > 0) {
-      setAgentChunks(globalAgentChunks);
-    }
-    // Restore streaming state
-    setIsStreaming(globalIsStreaming);
-  }, [globalSearchResults, globalAgentChunks, globalIsStreaming]);
-
-  // Sync local state to context
-  useEffect(() => {
-    setGlobalAgentChunks(agentChunks);
-  }, [agentChunks, setGlobalAgentChunks]);
-
-  useEffect(() => {
-    setGlobalIsStreaming(isStreaming);
-  }, [isStreaming, setGlobalIsStreaming]);
+  }, [globalSearchResults]);
 
   // Cleanup subscription on unmount
   useEffect(() => {
