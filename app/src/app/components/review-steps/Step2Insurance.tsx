@@ -13,6 +13,7 @@ import { motion } from "motion/react"
 import { FileUploadWithVerification } from "../FileUploadWithVerification"
 import { validateInsuranceClaim } from "../../services/reviewApi"
 import type { DocumentValidationResult } from "../../services/reviewApi"
+import { useAuth } from "../../contexts/AuthContext"
 
 const API_BASE_URL: string =
   (import.meta as any).env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""
@@ -35,6 +36,7 @@ interface Step2Props {
 }
 
 export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
+  const { user } = useAuth()
   const [hasInsurance, setHasInsurance] = useState(data.hasInsurance)
   const [insuranceCompanyId, setInsuranceCompanyId] = useState(
     data.insuranceCompanyId
@@ -435,6 +437,7 @@ export function Step2Insurance({ data, onUpdate, onNext, onBack }: Step2Props) {
                 description="Upload screenshots, emails, SMS, or documents proving your insurance claim"
                 accept="image/*,.pdf"
                 multiple={true}
+                customerId={user?.userId ?? ""}
                 validateFn={validateInsuranceClaim}
                 onVerificationComplete={handleClaimVerification}
               />

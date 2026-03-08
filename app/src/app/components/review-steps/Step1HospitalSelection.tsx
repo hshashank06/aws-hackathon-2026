@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { motion } from "motion/react"
 import { FileUploadWithVerification } from "../FileUploadWithVerification"
+import { useAuth } from "../../contexts/AuthContext"
 
 const API_BASE_URL: string =
   (import.meta as any).env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""
@@ -31,6 +32,7 @@ interface Step1Props {
 }
 
 export function Step1HospitalSelection({ data, onUpdate, onNext }: Step1Props) {
+  const { user } = useAuth()
   const [selectedHospital, setSelectedHospital] = useState(data.hospitalId)
   const [filesVerified, setFilesVerified] = useState(data.documentsVerified)
   const [hospitals, setHospitals] = useState<HospitalItem[]>([])
@@ -315,6 +317,7 @@ export function Step1HospitalSelection({ data, onUpdate, onNext }: Step1Props) {
             description="Drag and drop or click to upload bills, emails, or appointment confirmations"
             accept="image/*,.pdf"
             multiple={true}
+            customerId={user?.userId ?? ""}
             onVerificationComplete={handleVerificationComplete}
           />
 

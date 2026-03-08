@@ -233,16 +233,22 @@ async function processDocument(
 /**
  * Validate a hospital bill document:
  *   upload → S3  →  Rekognition (valid?) → Textract → Comprehend → payment{}
- *
- * Expects window.__reviewCustomerId to be set before calling.
  */
 export async function validateDocument(
-  file: File
+  file: File,
+  customerId: string
 ): Promise<DocumentValidationResult> {
   console.log(`[Document Validation API] Uploading & validating: ${file.name}`)
-
-  const customerId: string =
-    (window as any).__reviewCustomerId ?? "customer_unknown"
+  console.log(`[Document Validation API] Using customerId: ${customerId}`)
+  
+  if (!customerId || customerId === "customer_unknown") {
+    console.error('[Document Validation API] ERROR: Invalid customerId provided')
+    return {
+      success: false,
+      verified: false,
+      message: "Authentication required. Please sign in and try again."
+    }
+  }
 
   try {
     const { s3Key, documentId } = await uploadToS3(
@@ -286,14 +292,22 @@ export async function validateDocument(
  *   upload → S3  →  Rekognition → Textract → Comprehend → claim{}
  */
 export async function validateInsuranceClaim(
-  claimFile: File
+  claimFile: File,
+  customerId: string
 ): Promise<DocumentValidationResult> {
   console.log(
     `[Insurance Validation API] Uploading & validating: ${claimFile.name}`
   )
-
-  const customerId: string =
-    (window as any).__reviewCustomerId ?? "customer_unknown"
+  console.log(`[Insurance Validation API] Using customerId: ${customerId}`)
+  
+  if (!customerId || customerId === "customer_unknown") {
+    console.error('[Insurance Validation API] ERROR: Invalid customerId provided')
+    return {
+      success: false,
+      verified: false,
+      message: "Authentication required. Please sign in and try again."
+    }
+  }
 
   try {
     const { s3Key, documentId } = await uploadToS3(
@@ -347,12 +361,16 @@ export interface MedicalExtractionResult {
  *   Also returns the s3Keys (documentIds) for all successfully processed files.
  */
 export async function extractMedicalData(
-  files: File[]
+  files: File[],
+  customerId: string
 ): Promise<MedicalExtractionResult> {
   console.log(`[Medical Extraction API] Processing ${files.length} file(s)`)
-
-  const customerId: string =
-    (window as any).__reviewCustomerId ?? "customer_unknown"
+  console.log(`[Medical Extraction API] Using customerId: ${customerId}`)
+  
+  if (!customerId || customerId === "customer_unknown") {
+    console.error('[Medical Extraction API] ERROR: Invalid customerId provided')
+    throw new Error("Authentication required. Please sign in and try again.")
+  }
 
   const results: any[] = []
   const collectedDocumentIds: string[] = []
@@ -464,6 +482,11 @@ export async function submitReview(
   reviewData: any
 ): Promise<{ success: boolean; reviewId: string }> {
   console.log(`[Review Submission API] Submitting review`)
+  console.log(`[Review Submission API] Review data customerId: ${reviewData.customerId}`)
+  
+  if (reviewData.customerId === "customer_unknown") {
+    console.warn('[Review Submission API] WARNING: customerId is "customer_unknown" - auth may not be ready')
+  }
 
   try {
     const result = await apiPost<any>("/reviews", reviewData)

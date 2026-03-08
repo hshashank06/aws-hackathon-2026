@@ -69,10 +69,13 @@ export function useAuth(): AuthAPI {
 
   // Keep window.__reviewCustomerId in sync for reviewApi.ts
   useEffect(() => {
+    console.log('[AuthContext] useEffect triggered - user:', user?.userId)
     if (user?.userId) {
       ;(window as any).__reviewCustomerId = user.userId
+      console.log('[AuthContext] Set window.__reviewCustomerId to:', user.userId)
     } else {
       ;(window as any).__reviewCustomerId = undefined
+      console.log('[AuthContext] Cleared window.__reviewCustomerId')
     }
   }, [user?.userId])
 

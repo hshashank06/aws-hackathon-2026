@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { motion } from "motion/react"
 import { submitReview } from "../../services/reviewApi"
+import { useAuth } from "../../contexts/AuthContext"
 
 const API_BASE_URL: string =
   (import.meta as any).env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""
@@ -56,6 +57,7 @@ export function Step4ReviewSubmission({
   onBack,
   allData
 }: Step4Props) {
+  const { user } = useAuth()
   const [hospitalRating, setHospitalRating] = useState(data.hospitalRating || 0)
   const [hospitalReview, setHospitalReview] = useState(
     data.hospitalReview || ""
@@ -228,6 +230,11 @@ export function Step4ReviewSubmission({
   }
 
   const handleSubmit = async () => {
+    if (!user?.userId) {
+      setSubmitError("Authentication required. Please sign in and try again.")
+      return
+    }
+
     setIsSubmitting(true)
 
     const completeReviewData = {
@@ -259,10 +266,12 @@ export function Step4ReviewSubmission({
     // -----------------------------------------------------------------------
     setSubmitError(null)
 
+    console.log('[Step4] handleSubmit - using customerId:', user.userId)
+
     const payload = {
       hospitalId: allData.hospitalId,
       doctorId: selectedDoctorId,
-      customerId: (window as any).__reviewCustomerId ?? "customer_unknown",
+      customerId: user.userId,
       purposeOfVisit:
         allData.surgeryType || allData.diagnosis || "Medical Visit",
       hospitalReview,

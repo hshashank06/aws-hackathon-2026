@@ -12,8 +12,9 @@ interface FileUploadProps {
   description?: string
   accept?: string
   multiple?: boolean
+  customerId: string  // ← Add customerId prop
   /** Override the validation function (e.g. validateInsuranceClaim). Defaults to validateDocument (hospitalBill). */
-  validateFn?: (file: File) => Promise<DocumentValidationResult>
+  validateFn?: (file: File, customerId: string) => Promise<DocumentValidationResult>
   onVerificationComplete: (
     files: File[],
     allVerified: boolean,
@@ -34,6 +35,7 @@ export function FileUploadWithVerification({
   description,
   accept = "image/*,.pdf",
   multiple = true,
+  customerId,
   validateFn = validateDocument,
   onVerificationComplete
 }: FileUploadProps) {
@@ -76,7 +78,7 @@ export function FileUploadWithVerification({
       })
 
       // Call validation API
-      const result = await validateFn(fileStatus.file)
+      const result = await validateFn(fileStatus.file, customerId)
 
       // Update status with result
       setFiles((prev) => {
