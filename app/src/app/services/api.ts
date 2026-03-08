@@ -41,7 +41,8 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
           max: typeof enriched.avgCostRange.max === 'number' ? enriched.avgCostRange.max : 0,
         }
       : { min: 0, max: 0 },
-    aiRecommendation: enriched.aiRecommendation || "",
+    aiRecommendation: enriched.hospitalAIReview || enriched.aiRecommendation || "",
+    hospitalAIReview: enriched.hospitalAIReview || enriched.aiRecommendation || "",
     doctors: Array.isArray(enriched.doctors) ? enriched.doctors : [],
     reviews: Array.isArray(enriched.reviews) ? enriched.reviews : [],
     trustScore: typeof enriched.trustScore === 'number' ? enriched.trustScore : 85,

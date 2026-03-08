@@ -673,92 +673,19 @@ def get_hospital_id_by_name(hospital_name):
         logger.error(f"get_hospital_id_by_name execution time: {time.time() - start:.3f}s (failed)")
         raise Exception(f"Error fetching hospital ID by name: {str(e)}")
 
-def get_doctor_by_id(doctor_id):
-    """
-    Get complete doctor details including doctorName by doctorId.
-    Use this function to retrieve the actual doctor name when you have a doctorId.
-    CRITICAL: Always call this function before mentioning a doctor in your response to get their real name.
-    
-    Args:
-        doctor_id: The unique identifier for the doctor
-    
-    Returns:
-        Doctor details including doctorId, doctorName, rating, specialization, hospitalName
-    """
-    start = time.time()
-    try:
-        if not doctor_id:
-            raise ValueError("doctor_id is required")
-        
-        # Get doctor from DynamoDB
-        doctor_response = DOCTOR_TABLE.get_item(
-            Key={'doctorId': doctor_id},
-            ProjectionExpression='doctorId, doctorName, rating, departmentId, specialty, yearsOfExperience'
-        )
-        doctor = doctor_response.get('Item')
-        
-        if not doctor:
-            logger.info(f"Doctor not found: {doctor_id}")
-            logger.info(f"get_doctor_by_id execution time: {time.time() - start:.3f}s")
-            return []
-        
-        # Get department to find hospital and specialization
-        dept_id = doctor.get('departmentId', '')
-        hospital_name = 'Unknown'
-        hospital_id = 'Unknown'
-        specialization = doctor.get('specialty', 'General')
-        
-        if dept_id:
-            try:
-                dept_response = DEPARTMENT_TABLE.get_item(
-                    Key={'departmentId': dept_id},
-                    ProjectionExpression='hospitalId, departmentName'
-                )
-                dept = dept_response.get('Item', {})
-                hospital_id = dept.get('hospitalId', 'Unknown')
-                
-                # Use department name as specialization if specialty field is empty
-                if not specialization or specialization == 'General':
-                    specialization = dept.get('departmentName', 'General')
-                
-                # Get hospital name
-                if hospital_id != 'Unknown':
-                    hosp_response = HOSPITAL_TABLE.get_item(
-                        Key={'hospitalId': hospital_id},
-                        ProjectionExpression='hospitalName'
-                    )
-                    hosp = hosp_response.get('Item', {})
-                    hospital_name = hosp.get('hospitalName', 'Unknown')
-            except Exception as e:
-                logger.error(f"Error fetching department/hospital for doctor {doctor_id}: {str(e)}")
-        
-        result = [{
-            'doctorId': doctor.get('doctorId'),
-            'doctorName': doctor.get('doctorName'),
-            'rating': float(doctor.get('rating', 0)),
-            'specialization': specialization,
-            'yearsOfExperience': int(doctor.get('yearsOfExperience', 0)) if doctor.get('yearsOfExperience') else None,
-            'hospitalName': hospital_name,
-            'hospitalId': hospital_id
-        }]
-        
-        logger.info(f"get_doctor_by_id execution time: {time.time() - start:.3f}s")
-        return result
-    except Exception as e:
-        logger.error(f"get_doctor_by_id execution time: {time.time() - start:.3f}s (failed)")
-        raise Exception(f"Error fetching doctor by ID: {str(e)}")
-
 def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
     """
-    Returns doctorId and details given doctor name and/or doctorId.
+    Returns doctorId and complete details given doctor name and/or doctorId.
     Accepts either doctor_name OR doctor_id (or both for validation).
+    This is the unified function for all doctor lookups.
     
     Args:
         doctor_name: Name of the doctor (partial match supported, optional)
         doctor_id: ID of the doctor (exact match, optional)
     
     Returns:
-        List of matching doctors with doctorId, doctorName, and hospitalName
+        List of matching doctors with complete details including doctorId, doctorName, rating, 
+        specialization, yearsOfExperience, hospitalName, and hospitalId
     """
     start = time.time()
     try:
@@ -770,35 +697,47 @@ def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
             try:
                 doctor_response = DOCTOR_TABLE.get_item(
                     Key={'doctorId': doctor_id},
-                    ProjectionExpression='doctorId, doctorName, rating, departmentId'
+                    ProjectionExpression='doctorId, doctorName, rating, departmentId, specialty, yearsOfExperience'
                 )
                 doctor = doctor_response.get('Item')
                 
                 if doctor:
-                    # Get hospital info
+                    # Get department and hospital info
                     dept_id = doctor.get('departmentId', '')
-                    dept_response = DEPARTMENT_TABLE.get_item(
-                        Key={'departmentId': dept_id},
-                        ProjectionExpression='hospitalId'
-                    )
-                    dept = dept_response.get('Item', {})
-                    hospital_id = dept.get('hospitalId', 'Unknown')
+                    hospital_name = 'Unknown'
+                    hospital_id = 'Unknown'
+                    specialization = doctor.get('specialty', 'General')
                     
-                    # Get hospital name
-                    if hospital_id != 'Unknown':
-                        hosp_response = HOSPITAL_TABLE.get_item(
-                            Key={'hospitalId': hospital_id},
-                            ProjectionExpression='hospitalName'
-                        )
-                        hosp = hosp_response.get('Item', {})
-                        hospital_name = hosp.get('hospitalName', 'Unknown')
-                    else:
-                        hospital_name = 'Unknown'
+                    if dept_id:
+                        try:
+                            dept_response = DEPARTMENT_TABLE.get_item(
+                                Key={'departmentId': dept_id},
+                                ProjectionExpression='hospitalId, departmentName'
+                            )
+                            dept = dept_response.get('Item', {})
+                            hospital_id = dept.get('hospitalId', 'Unknown')
+                            
+                            # Use department name as specialization if specialty field is empty
+                            if not specialization or specialization == 'General':
+                                specialization = dept.get('departmentName', 'General')
+                            
+                            # Get hospital name
+                            if hospital_id != 'Unknown':
+                                hosp_response = HOSPITAL_TABLE.get_item(
+                                    Key={'hospitalId': hospital_id},
+                                    ProjectionExpression='hospitalName'
+                                )
+                                hosp = hosp_response.get('Item', {})
+                                hospital_name = hosp.get('hospitalName', 'Unknown')
+                        except Exception as e:
+                            logger.error(f"Error fetching department/hospital: {str(e)}")
                     
                     result = [{
                         'doctorId': doctor.get('doctorId'),
                         'doctorName': doctor.get('doctorName'),
                         'rating': float(doctor.get('rating', 0)),
+                        'specialization': specialization,
+                        'yearsOfExperience': int(doctor.get('yearsOfExperience', 0)) if doctor.get('yearsOfExperience') else None,
                         'hospitalName': hospital_name,
                         'hospitalId': hospital_id
                     }]
@@ -816,7 +755,7 @@ def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
         if doctor_name:
             # Scan doctors (976 doctors - need to scan)
             response = DOCTOR_TABLE.scan(
-                ProjectionExpression='doctorId, doctorName, rating, departmentId',
+                ProjectionExpression='doctorId, doctorName, rating, departmentId, specialty, yearsOfExperience',
                 Limit=1000  # Limit to prevent excessive scanning
             )
             doctors = response.get('Items', [])
@@ -834,15 +773,20 @@ def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
             result_doctors = []
             for doctor in matching_doctors[:10]:  # Limit to 10 for batch processing
                 dept_id = doctor.get('departmentId', '')
+                specialization = doctor.get('specialty', 'General')
                 
                 try:
                     # Get department to find hospital
                     dept_response = DEPARTMENT_TABLE.get_item(
                         Key={'departmentId': dept_id},
-                        ProjectionExpression='hospitalId'
+                        ProjectionExpression='hospitalId, departmentName'
                     )
                     dept = dept_response.get('Item', {})
                     hospital_id = dept.get('hospitalId', 'Unknown')
+                    
+                    # Use department name as specialization if specialty field is empty
+                    if not specialization or specialization == 'General':
+                        specialization = dept.get('departmentName', 'General')
                     
                     # Get hospital name
                     if hospital_id != 'Unknown':
@@ -859,6 +803,8 @@ def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
                         'doctorId': doctor.get('doctorId'),
                         'doctorName': doctor.get('doctorName'),
                         'rating': float(doctor.get('rating', 0)),
+                        'specialization': specialization,
+                        'yearsOfExperience': int(doctor.get('yearsOfExperience', 0)) if doctor.get('yearsOfExperience') else None,
                         'hospitalName': hospital_name,
                         'hospitalId': hospital_id
                     })
@@ -877,6 +823,189 @@ def get_doctor_id_by_name(doctor_name=None, doctor_id=None):
     except Exception as e:
         logger.error(f"get_doctor_id_by_name execution time: {time.time() - start:.3f}s (failed)")
         raise Exception(f"Error fetching doctor ID by name: {str(e)}")
+
+
+def get_hospital_doctors(hospital_id, department_name=None):
+    """
+    Get doctors for a specific hospital, optionally filtered by department.
+    
+    Args:
+        hospital_id: The unique identifier for the hospital
+        department_name: Optional department name (e.g., "Department of Cardiology")
+                        If not provided, returns top doctors across all departments
+    
+    Returns:
+        List of up to 5 doctors sorted by rating descending
+    """
+    start = time.time()
+    try:
+        if not hospital_id:
+            raise ValueError("hospital_id is required")
+        
+        # Get hospital to verify it exists and get name
+        hospital_response = HOSPITAL_TABLE.get_item(
+            Key={'hospitalId': hospital_id},
+            ProjectionExpression='hospitalName, departmentIds'
+        )
+        hospital = hospital_response.get('Item')
+        
+        if not hospital:
+            logger.info(f"Hospital not found: {hospital_id}")
+            logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+            return []
+        
+        hospital_name = hospital.get('hospitalName', 'Unknown')
+        
+        # If department_name is provided, filter by that department
+        if department_name:
+            # Query departments by name using GSI, then filter by hospitalId
+            dept_response = DEPARTMENT_TABLE.query(
+                IndexName='departmentName-index',
+                KeyConditionExpression=Key('departmentName').eq(department_name),
+                ProjectionExpression='departmentId, hospitalId, listOfDoctorIds',
+                Limit=50
+            )
+            departments = dept_response.get('Items', [])
+            
+            # Filter to only this hospital's department
+            hospital_dept = None
+            for dept in departments:
+                if dept.get('hospitalId') == hospital_id:
+                    hospital_dept = dept
+                    break
+            
+            if not hospital_dept:
+                logger.info(f"Department {department_name} not found in hospital {hospital_id}")
+                logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+                return []
+            
+            # Get doctor IDs from department
+            doctor_ids = hospital_dept.get('listOfDoctorIds', '[]')
+            if isinstance(doctor_ids, str):
+                doctor_ids = json.loads(doctor_ids)
+            
+            if not doctor_ids:
+                logger.info(f"No doctors found in department {department_name} at hospital {hospital_id}")
+                logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+                return []
+            
+            # Use batch_get_item for doctors
+            doctors = []
+            for i in range(0, len(doctor_ids), 100):
+                batch_doctor_ids = doctor_ids[i:i+100]
+                
+                response = dynamodb.batch_get_item(
+                    RequestItems={
+                        'Doctor': {
+                            'Keys': [{'doctorId': doc_id} for doc_id in batch_doctor_ids],
+                            'ProjectionExpression': 'doctorId, doctorName, rating'
+                        }
+                    }
+                )
+                batch_doctors = response.get('Responses', {}).get('Doctor', [])
+                doctors.extend(batch_doctors)
+            
+            # Build result with doctor details
+            result_doctors = []
+            for doctor in doctors:
+                result_doctors.append({
+                    'doctorId': doctor.get('doctorId'),
+                    'doctorName': doctor.get('doctorName'),
+                    'rating': float(doctor.get('rating', 0)),
+                    'specialization': department_name,
+                    'hospitalName': hospital_name,
+                    'hospitalId': hospital_id
+                })
+        else:
+            # No department specified - get all doctors from all departments
+            department_ids = hospital.get('departmentIds', '[]')
+            if isinstance(department_ids, str):
+                department_ids = json.loads(department_ids)
+            
+            if not department_ids:
+                logger.info(f"No departments found for hospital: {hospital_id}")
+                logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+                return []
+            
+            # Get all doctors from all departments
+            all_doctor_ids = []
+            for dept_id in department_ids:
+                try:
+                    dept_response = DEPARTMENT_TABLE.get_item(
+                        Key={'departmentId': dept_id},
+                        ProjectionExpression='listOfDoctorIds, departmentName'
+                    )
+                    dept = dept_response.get('Item', {})
+                    doctor_ids = dept.get('listOfDoctorIds', '[]')
+                    if isinstance(doctor_ids, str):
+                        doctor_ids = json.loads(doctor_ids)
+                    all_doctor_ids.extend(doctor_ids)
+                except:
+                    continue
+            
+            # Remove duplicates
+            all_doctor_ids = list(set(all_doctor_ids))
+            
+            if not all_doctor_ids:
+                logger.info(f"No doctors found for hospital: {hospital_id}")
+                logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+                return []
+            
+            # Use batch_get_item for doctors
+            doctors = []
+            for i in range(0, len(all_doctor_ids), 100):
+                batch_doctor_ids = all_doctor_ids[i:i+100]
+                
+                response = dynamodb.batch_get_item(
+                    RequestItems={
+                        'Doctor': {
+                            'Keys': [{'doctorId': doc_id} for doc_id in batch_doctor_ids],
+                            'ProjectionExpression': 'doctorId, doctorName, rating, departmentId'
+                        }
+                    }
+                )
+                batch_doctors = response.get('Responses', {}).get('Doctor', [])
+                doctors.extend(batch_doctors)
+            
+            # Get department names for doctors
+            dept_names = {}
+            for doctor in doctors:
+                dept_id = doctor.get('departmentId', '')
+                if dept_id and dept_id not in dept_names:
+                    try:
+                        dept_response = DEPARTMENT_TABLE.get_item(
+                            Key={'departmentId': dept_id},
+                            ProjectionExpression='departmentName'
+                        )
+                        dept = dept_response.get('Item', {})
+                        dept_names[dept_id] = dept.get('departmentName', 'General')
+                    except:
+                        dept_names[dept_id] = 'General'
+            
+            # Build result with doctor details
+            result_doctors = []
+            for doctor in doctors:
+                dept_id = doctor.get('departmentId', '')
+                specialization = dept_names.get(dept_id, 'General')
+                
+                result_doctors.append({
+                    'doctorId': doctor.get('doctorId'),
+                    'doctorName': doctor.get('doctorName'),
+                    'rating': float(doctor.get('rating', 0)),
+                    'specialization': specialization,
+                    'hospitalName': hospital_name,
+                    'hospitalId': hospital_id
+                })
+        
+        # Sort by rating descending and return top 5
+        result_doctors.sort(key=lambda x: x.get('rating', 0), reverse=True)
+        result = result_doctors[:5]
+        
+        logger.info(f"get_hospital_doctors execution time: {time.time() - start:.3f}s")
+        return result
+    except Exception as e:
+        logger.error(f"get_hospital_doctors execution time: {time.time() - start:.3f}s (failed)")
+        raise Exception(f"Error fetching doctors for hospital: {str(e)}")
 
 def lambda_handler(event, context):
     """
@@ -991,11 +1120,12 @@ def lambda_handler(event, context):
                 raise ValueError("Either doctor_name or doctor_id is required")
             result = get_doctor_id_by_name(doctor_name, doctor_id)
         
-        elif operation == 'get_doctor_by_id':
-            doctor_id = parameters.get('doctorId') or parameters.get('doctor_id')
-            if not doctor_id:
-                raise ValueError("doctorId is required")
-            result = get_doctor_by_id(doctor_id)
+        elif operation == 'get_hospital_doctors':
+            hospital_id = parameters.get('hospital_id') or parameters.get('hospitalId')
+            department_name = parameters.get('department_name')
+            if not hospital_id:
+                raise ValueError("hospital_id is required")
+            result = get_hospital_doctors(hospital_id, department_name)
         
         else:
             raise ValueError(f"Unknown operation: {operation}")

@@ -1,0 +1,16 @@
+{
+  "name": "get_hospital_doctors",
+  "description": "Get doctors for a specific hospital, optionally filtered by department. Use this when you need to find doctors at a hospital. If department_name is provided, returns doctors in that specialty only. If department_name is omitted, returns top 5 doctors across all departments sorted by rating. Returns doctor details including doctorId, doctorName, rating, specialization, hospitalName, and hospitalId.",
+  "parameters": {
+    "hospital_id": {
+      "description": "The unique identifier for the hospital (e.g., 'hospital_apollo_hospitals_jubilee_hills_500033'). This is the hospitalId you received from other functions.",
+      "type": "string",
+      "required": true
+    },
+    "department_name": {
+      "description": "Optional: Full department name with 'Department of' prefix. If provided, filters doctors to this specialty only. If omitted, returns top doctors across all departments. Examples: 'Department of Cardiology', 'Department of Orthopedics', 'Department of Neurology', 'Department of Oncology', 'Department of Gastroenterology'.",
+      "type": "string",
+      "required": false
+    }
+  }
+}

@@ -59,7 +59,7 @@ const GET_SEARCH_RESULTS = `
             min
             max
           }
-          aiRecommendation
+          hospitalAIReview
           insuranceCoveragePercent
           trustScore
           verificationBadge
@@ -130,6 +130,7 @@ export interface Hospital {
     max: number;
   };
   aiRecommendation: string;
+  hospitalAIReview?: string;
   insuranceCoveragePercent: number;
   trustScore: number;
   verificationBadge: string;

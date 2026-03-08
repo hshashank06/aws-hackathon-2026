@@ -555,7 +555,7 @@ export function HospitalDetail() {
                 <h2 className="text-xl font-semibold text-gray-900">AI Analysis</h2>
               </div>
               <div className="prose max-w-none text-gray-700">
-                <ReactMarkdown>{hospital.aiRecommendation}</ReactMarkdown>
+                <ReactMarkdown>{hospital.hospitalAIReview || hospital.aiRecommendation}</ReactMarkdown>
               </div>
             </motion.div>
 

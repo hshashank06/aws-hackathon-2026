@@ -30,7 +30,7 @@ type Hospital {
   specialties: [String!]!
   acceptedInsurance: [String!]!
   avgCostRange: CostRange!
-  aiRecommendation: String!
+  hospitalAIReview: String
   insuranceCoveragePercent: Int!
   trustScore: Int!
   verificationBadge: String!

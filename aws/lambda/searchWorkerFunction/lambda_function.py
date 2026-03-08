@@ -468,7 +468,7 @@ def build_enriched_hospital(hospital_llm: dict, hospital_data: dict, reviews: li
         "insuranceCoveragePercent": insurance_coverage_percent,
         "trustScore": 85,
         "verificationBadge": "gold",
-        "aiRecommendation": hospital_llm.get("hospitalAIReview", ""),
+        "hospitalAIReview": hospital_llm.get("hospitalAIReview", ""),
         "reviews": formatted_reviews,
         "doctors": [],
         "topDoctorIds": top_doctor_ids,
