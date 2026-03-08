@@ -60,13 +60,10 @@ logger.setLevel(logging.INFO)
 
 
 # Environment variables
-BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "I2FYS2ELU3")
+BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
-API_GATEWAY_BASE_URL = os.environ.get(
-    "API_GATEWAY_BASE_URL",
-    "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com"
-)
+API_GATEWAY_BASE_URL = os.environ.get("API_GATEWAY_BASE_URL")
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "SearchResults")
 DYNAMODB_REGION = os.environ.get("DYNAMODB_REGION", "eu-north-1")
 
@@ -321,8 +318,8 @@ def invoke_bedrock_agent(query: str, customer_id: str, max_retries: int = LLM_MA
     Raises:
         Exception: If agent invocation fails after all retries
     """
-    # Hardcode session ID for consistent testing and conversation context
-    session_id = "1448d478-2001-7004-684a-512247f811da"
+    # Get session ID from environment variable or use customer_id as fallback
+    session_id = os.environ.get("BEDROCK_SESSION_ID", customer_id)
     
     for attempt in range(1, max_retries + 1):
         try:

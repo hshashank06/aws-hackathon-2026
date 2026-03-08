@@ -9,6 +9,9 @@ import { HospitalMap } from "../components/HospitalMap";
 import ReactMarkdown from "react-markdown";
 import { useSearch } from "../contexts/SearchContext";
 
+// API Configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 export function HospitalDetail() {
   const { id } = useParams();
   const [hospital, setHospital] = useState<Hospital | null>(null);
@@ -79,7 +82,7 @@ export function HospitalDetail() {
             try {
               // First, fetch the full hospital data to get insuranceCompanyIds
               const hospitalResponse = await fetch(
-                `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/hospitals/${id}`
+                `${API_BASE_URL}/hospitals/${id}`
               );
               if (hospitalResponse.ok) {
                 const hospitalData = await hospitalResponse.json();
@@ -92,7 +95,7 @@ export function HospitalDetail() {
                   const insurancePromises = insuranceIds.map(async (insuranceId: string) => {
                     try {
                       const response = await fetch(
-                        `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/insurance-companies/${insuranceId}`
+                        `${API_BASE_URL}/insurance-companies/${insuranceId}`
                       );
                       if (response.ok) {
                         const data = await response.json();
@@ -158,7 +161,7 @@ export function HospitalDetail() {
                 try {
                   // Fetch doctor data
                   const doctorResponse = await fetch(
-                    `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors/${doctorId}`
+                    `${API_BASE_URL}/doctors/${doctorId}`
                   );
                   if (!doctorResponse.ok) {
                     console.error(`Failed to fetch doctor ${doctorId}`);
@@ -170,7 +173,7 @@ export function HospitalDetail() {
                   let reviewCount = 0;
                   try {
                     const reviewsResponse = await fetch(
-                      `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/reviews?doctorId=${doctorId}&limit=100`
+                      `${API_BASE_URL}/reviews?doctorId=${doctorId}&limit=100`
                     );
                     if (reviewsResponse.ok) {
                       const reviewsData = await reviewsResponse.json();
@@ -246,7 +249,7 @@ export function HospitalDetail() {
                 try {
                   // Fetch hospital data to get department IDs
                   const hospitalResponse = await fetch(
-                    `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/hospitals/${id}`
+                    `${API_BASE_URL}/hospitals/${id}`
                   );
                   if (hospitalResponse.ok) {
                     const hospitalData = await hospitalResponse.json();
@@ -258,7 +261,7 @@ export function HospitalDetail() {
                     for (const deptId of departmentIds) {
                       try {
                         const doctorsResponse = await fetch(
-                          `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors?departmentId=${deptId}&limit=100`
+                          `${API_BASE_URL}/doctors?departmentId=${deptId}&limit=100`
                         );
                         if (doctorsResponse.ok) {
                           const doctorsData = await doctorsResponse.json();
@@ -283,7 +286,7 @@ export function HospitalDetail() {
                     const additionalPromises = additionalDoctorIds.map(async (doctorId: string) => {
                       try {
                         const doctorResponse = await fetch(
-                          `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/doctors/${doctorId}`
+                          `${API_BASE_URL}/doctors/${doctorId}`
                         );
                         if (!doctorResponse.ok) return null;
                         
@@ -293,7 +296,7 @@ export function HospitalDetail() {
                         let reviewCount = 0;
                         try {
                           const reviewsResponse = await fetch(
-                            `https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com/reviews?doctorId=${doctorId}&limit=100`
+                            `${API_BASE_URL}/reviews?doctorId=${doctorId}&limit=100`
                           );
                           if (reviewsResponse.ok) {
                             const reviewsData = await reviewsResponse.json();

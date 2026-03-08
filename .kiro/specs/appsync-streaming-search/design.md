@@ -405,7 +405,8 @@ def invoke_bedrock_agent_with_streaming(
     """
     Invoke Bedrock Agent with trace streaming to AppSync.
     """
-    session_id = "1448d478-2001-7004-684a-512247f811da"
+    # Get session ID from environment variable or use customer_id as fallback
+    session_id = os.environ.get("BEDROCK_SESSION_ID", customer_id)
     
     for attempt in range(1, max_retries + 1):
         try:

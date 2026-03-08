@@ -41,17 +41,12 @@ dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("DYNAMODB_REGIO
 search_results_table = dynamodb.Table(os.environ.get("DYNAMODB_TABLE_NAME", "SearchResults"))
 
 
-AGENT_ID = "ASPMAO88W7"
-AGENT_ALIAS_ID = "BXNC6XCUEC"
-
-REGION = "us-east-1"
-APPSYNC_API_ID = "xuwjgn5z4zgjfl474tpyoyuoza"
 # ---------- constants ----------
-BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID", "ASPMAO88W7")
-BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID", "BXNC6XCUEC")
-API_GATEWAY_BASE_URL = os.environ.get("API_GATEWAY_BASE_URL", "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com")
-APPSYNC_ENDPOINT = "https://xg5bjurpsbgfda2nufr6c46n7e.appsync-api.us-east-1.amazonaws.com/graphql"
-APPSYNC_API_KEY = "da2-ezoxtcpclffrdkbysmv22sjiei"
+BEDROCK_AGENT_ID = os.environ.get("BEDROCK_AGENT_ID")
+BEDROCK_AGENT_ALIAS_ID = os.environ.get("BEDROCK_AGENT_ALIAS_ID")
+API_GATEWAY_BASE_URL = os.environ.get("API_GATEWAY_BASE_URL")
+APPSYNC_ENDPOINT = os.environ.get("APPSYNC_ENDPOINT")
+APPSYNC_API_KEY = os.environ.get("APPSYNC_API_KEY")
 SEARCH_RESULT_TTL_HOURS = 5
 LLM_MAX_RETRIES = 3
 MAX_WORKERS = 20
@@ -216,7 +211,8 @@ def invoke_bedrock_agent_with_streaming(search_id: str, query: str, customer_id:
     """
     Invoke Bedrock Agent with trace streaming to AppSync.
     """
-    session_id = "1448d478-2001-7004-684a-512247f811da"
+    # Get session ID from environment variable or use customer_id as fallback
+    session_id = os.environ.get("BEDROCK_SESSION_ID", customer_id)
     
     for attempt in range(1, max_retries + 1):
         try:

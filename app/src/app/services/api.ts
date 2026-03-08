@@ -22,7 +22,7 @@ interface SearchResponse {
 }
 
 // API Configuration
-const API_BASE_URL = "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com";
 const SEARCH_ENDPOINT = `${API_BASE_URL}/search`;
 
 // Feature flag to toggle between real API and mock data
