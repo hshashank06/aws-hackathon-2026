@@ -37,6 +37,20 @@ type Hospital {
   coordinates: Coordinates
   distance: Float
   topDoctorIds: [ID!]!
+  reviews: [Review!]!
+  doctorAIReviews: AWSJSON
+}
+
+type Review {
+  id: ID!
+  patientName: String!
+  rating: Int
+  date: String!
+  treatment: String!
+  cost: Int!
+  insuranceCovered: Int!
+  comment: String!
+  verified: Boolean!
 }
 
 type CostRange {

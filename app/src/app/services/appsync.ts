@@ -69,6 +69,18 @@ const GET_SEARCH_RESULTS = `
           }
           distance
           topDoctorIds
+          reviews {
+            id
+            patientName
+            rating
+            date
+            treatment
+            cost
+            insuranceCovered
+            comment
+            verified
+          }
+          doctorAIReviews
         }
       }
       error
@@ -127,6 +139,20 @@ export interface Hospital {
   };
   distance?: number;
   topDoctorIds: string[];
+  reviews: Review[];
+  doctorAIReviews?: any;
+}
+
+export interface Review {
+  id: string;
+  patientName: string;
+  rating?: number;
+  date: string;
+  treatment: string;
+  cost: number;
+  insuranceCovered: number;
+  comment: string;
+  verified: boolean;
 }
 
 export interface SearchResults {

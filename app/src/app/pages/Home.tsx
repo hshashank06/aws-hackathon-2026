@@ -10,15 +10,23 @@ import * as AppSync from "../services/appsync";
 import type { AgentChunk } from "../services/appsync";
 
 export function Home() {
-  const { searchResults: globalSearchResults, setSearchResults: setGlobalSearchResults, setSearchId: setGlobalSearchId } = useSearch();
+  const { 
+    searchResults: globalSearchResults, 
+    setSearchResults: setGlobalSearchResults, 
+    setSearchId: setGlobalSearchId,
+    agentChunks: globalAgentChunks,
+    setAgentChunks: setGlobalAgentChunks,
+    isStreaming: globalIsStreaming,
+    setIsStreaming: setGlobalIsStreaming
+  } = useSearch();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Hospital[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Streaming state
-  const [agentChunks, setAgentChunks] = useState<string[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
+  // Use context for streaming state (persisted across navigation)
+  const [agentChunks, setAgentChunks] = useState<string[]>(globalAgentChunks);
+  const [isStreaming, setIsStreaming] = useState(globalIsStreaming);
   const subscriptionRef = useRef<any>(null);
 
   // Restore search results from context when component mounts
@@ -27,7 +35,22 @@ export function Home() {
       setSearchResults(globalSearchResults);
       setHasSearched(true);
     }
-  }, [globalSearchResults]);
+    // Restore agent chunks
+    if (globalAgentChunks && globalAgentChunks.length > 0) {
+      setAgentChunks(globalAgentChunks);
+    }
+    // Restore streaming state
+    setIsStreaming(globalIsStreaming);
+  }, [globalSearchResults, globalAgentChunks, globalIsStreaming]);
+
+  // Sync local state to context
+  useEffect(() => {
+    setGlobalAgentChunks(agentChunks);
+  }, [agentChunks, setGlobalAgentChunks]);
+
+  useEffect(() => {
+    setGlobalIsStreaming(isStreaming);
+  }, [isStreaming, setGlobalIsStreaming]);
 
   // Cleanup subscription on unmount
   useEffect(() => {
@@ -94,8 +117,8 @@ export function Home() {
       distance: h.distance,
       topDoctorIds: h.topDoctorIds,
       doctors: [], // Lazy loaded
-      reviews: [], // Lazy loaded
-      doctorAIReviews: {}, // Not needed in UI
+      reviews: h.reviews || [], // Include reviews from AppSync
+      doctorAIReviews: h.doctorAIReviews || {},
     };
   };
 
