@@ -8,6 +8,7 @@ import { useSearch } from "../contexts/SearchContext";
 import { AgentActivityStream } from "../components/AgentActivityStream";
 import * as AppSync from "../services/appsync";
 import type { AgentChunk } from "../services/appsync";
+import { useAuth } from "../contexts/AuthContext";
 
 export function Home() {
   const { 
@@ -19,6 +20,7 @@ export function Home() {
     isStreaming,
     setIsStreaming
   } = useSearch();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Hospital[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -32,6 +34,15 @@ export function Home() {
       setHasSearched(true);
     }
   }, [globalSearchResults]);
+
+  // Debug: Log user authentication state
+  useEffect(() => {
+    console.log('[Home] Auth state changed:', {
+      userId: user?.userId,
+      email: user?.email,
+      windowCustomerId: (window as any).__reviewCustomerId
+    });
+  }, [user]);
 
   // Cleanup subscription on unmount
   useEffect(() => {
@@ -148,10 +159,11 @@ export function Home() {
       }
 
       // Step 1: Initiate search via AppSync
-      console.log('[Home] Initiating search via AppSync...');
+      const customerId = user?.userId ?? (window as any).__reviewCustomerId ?? "customer_unknown";
+      console.log('[Home] Initiating search via AppSync with customerId:', customerId);
       const { searchId, status } = await AppSync.initiateSearch(
         enhancedQuery,
-        'test-user-123', // TODO: Get from auth context
+        customerId,
         userLocation
       );
 

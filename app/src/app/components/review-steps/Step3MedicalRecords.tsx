@@ -5,6 +5,7 @@ import {
   extractMedicalData,
   ExtractedMedicalData
 } from "../../services/reviewApi"
+import { useAuth } from "../../contexts/AuthContext"
 
 interface Step3Props {
   data: {
@@ -29,6 +30,7 @@ export function Step3MedicalRecords({
   onNext,
   onBack
 }: Step3Props) {
+  const { user } = useAuth()
   const [files, setFiles] = useState<File[]>(data.medicalRecordFiles)
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractedData, setExtractedData] =
@@ -57,6 +59,11 @@ export function Step3MedicalRecords({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return
+    
+    if (!user?.userId) {
+      alert("Authentication required. Please sign in and try again.")
+      return
+    }
 
     const uploadedFiles = Array.from(e.target.files)
     setFiles(uploadedFiles)
@@ -67,7 +74,7 @@ export function Step3MedicalRecords({
       const {
         extractedData: extracted,
         documentIds: medicalRecordDocumentIds
-      } = await extractMedicalData(uploadedFiles)
+      } = await extractMedicalData(uploadedFiles, user.userId)
       setExtractedData(extracted)
 
       // Auto-fill form fields
