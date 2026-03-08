@@ -287,20 +287,32 @@ export function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="mt-4 flex flex-wrap gap-2 justify-center"
+              className="mt-6"
             >
-              <span className="text-sm text-gray-500">Try:</span>
-              {["cardiac surgery", "orthopedic care", "cancer treatment", "affordable surgery"].map(
-                (suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => setSearchQuery(suggestion)}
-                    className="text-sm bg-white px-3 py-1 rounded-full border border-gray-200 hover:border-blue-500 hover:text-blue-600 transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                )
-              )}
+              <p className="text-sm text-gray-600 mb-3 text-center">Try out the below prompts</p>
+              <div className="flex flex-col gap-2 max-w-3xl mx-auto">
+                {[
+                  "I am not able to breathe at night, my sinuses, especially during winters, my nose gets blocked quite frequently and drinking warm water or breathing steam is not helping me. So I want to consult with a doctor as to why my nose constantly gets blocked. It is ruining my sleep cycles and I think it might require surgery as well. So I want to check for affordable hospitals near me which can help me fix my issue, hospitals which contain qualified doctors and good services and at the same time have high claim ratio for Tata AIG health insurance.",
+                  "I'm feeling an acute pain in my heart. I need to visit an hospital near me immediately. I have an insurance - Aditya Birla, however I am looking for an affordable hospitals.",
+                  "I started feeling tired a lot recently. I am not able to walk for a long distance and I start feeling excessive breathlessness. I am worried about my condition, and I am looking for an affordable hospital near me. I generally feel scared visiting doctors, so I am looking for very kind and patient doctors to help me diagnose my issue.",
+                  "My back started hurting a lot since yesterday, and today it is worse. I want to urgently visit a good hospital nearby and show this issue to a well qualified doctor. I have the Tata AIG health insurance, and I am looking at affordable hospitals."
+                ].map((fullPrompt, index) => {
+                  // Truncate to first 80 characters
+                  const truncated = fullPrompt.length > 80 
+                    ? fullPrompt.substring(0, 80) + "..." 
+                    : fullPrompt;
+                  
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => setSearchQuery(fullPrompt)}
+                      className="text-left text-sm bg-white px-4 py-3 rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all text-gray-700 hover:text-blue-600"
+                    >
+                      {truncated}
+                    </button>
+                  );
+                })}
+              </div>
             </motion.div>
           )}
         </div>
