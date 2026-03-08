@@ -10,7 +10,7 @@ import ReactMarkdown from "react-markdown";
 import { useSearch } from "../contexts/SearchContext";
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://ri8zkgmzlb.execute-api.us-east-1.amazonaws.com";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export function HospitalDetail() {
   const { id } = useParams();
