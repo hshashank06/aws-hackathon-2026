@@ -79,17 +79,13 @@ export function Home() {
    * Convert AppSync Hospital to UI Hospital format
    */
   const adaptAppSyncHospital = (h: AppSync.Hospital): Hospital => {
-    // Parse doctorAIReviews if it's a JSON string
-    let doctorAIReviews = {};
-    if (h.doctorAIReviews) {
-      try {
-        doctorAIReviews = typeof h.doctorAIReviews === 'string' 
-          ? JSON.parse(h.doctorAIReviews) 
-          : h.doctorAIReviews;
-      } catch (error) {
-        console.error('[Home] Failed to parse doctorAIReviews:', error);
-        doctorAIReviews = {};
-      }
+    // Convert doctors array to doctorAIReviews map for backward compatibility
+    let doctorAIReviews: Record<string, string> = {};
+    if (h.doctors && Array.isArray(h.doctors)) {
+      doctorAIReviews = h.doctors.reduce((acc, doctor) => {
+        acc[doctor.doctorId] = doctor.doctorAIReview;
+        return acc;
+      }, {} as Record<string, string>);
     }
 
     return {

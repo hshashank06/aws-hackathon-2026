@@ -51,7 +51,13 @@ function adaptEnrichedHospitalToHospital(enriched: any): Hospital {
       ? enriched.insuranceCoveragePercent 
       : 0,
     topDoctorIds: Array.isArray(enriched.topDoctorIds) ? enriched.topDoctorIds : [],
-    doctorAIReviews: enriched.doctorAIReviews || {},
+    // Convert doctors array to doctorAIReviews map for backward compatibility
+    doctorAIReviews: enriched.doctors 
+      ? enriched.doctors.reduce((acc: Record<string, string>, doctor: any) => {
+          acc[doctor.doctorId] = doctor.doctorAIReview;
+          return acc;
+        }, {})
+      : {},
     // Location and distance fields
     coordinates: enriched.coordinates || undefined,
     distance: typeof enriched.distance === 'number' ? enriched.distance : undefined,

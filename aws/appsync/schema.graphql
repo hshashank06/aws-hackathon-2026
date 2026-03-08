@@ -19,6 +19,11 @@ type AgentChunk {
   timestamp: AWSDateTime!
 }
 
+type Doctor {
+  doctorId: ID!
+  doctorAIReview: String!
+}
+
 type Hospital {
   id: ID!
   name: String!
@@ -30,15 +35,15 @@ type Hospital {
   specialties: [String!]!
   acceptedInsurance: [String!]!
   avgCostRange: CostRange!
-  hospitalAIReview: String
+  hospitalAIReview: String!
   insuranceCoveragePercent: Int!
   trustScore: Int!
   verificationBadge: String!
   coordinates: Coordinates
   distance: Float
   topDoctorIds: [ID!]!
+  doctors: [Doctor!]!
   reviews: [Review!]!
-  doctorAIReviews: AWSJSON
 }
 
 type Review {

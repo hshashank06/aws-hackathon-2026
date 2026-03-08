@@ -69,6 +69,10 @@ const GET_SEARCH_RESULTS = `
           }
           distance
           topDoctorIds
+          doctors {
+            doctorId
+            doctorAIReview
+          }
           reviews {
             id
             patientName
@@ -80,7 +84,6 @@ const GET_SEARCH_RESULTS = `
             comment
             verified
           }
-          doctorAIReviews
         }
       }
       error
@@ -140,8 +143,11 @@ export interface Hospital {
   };
   distance?: number;
   topDoctorIds: string[];
+  doctors?: Array<{
+    doctorId: string;
+    doctorAIReview: string;
+  }>;
   reviews: Review[];
-  doctorAIReviews?: any;
 }
 
 export interface Review {
