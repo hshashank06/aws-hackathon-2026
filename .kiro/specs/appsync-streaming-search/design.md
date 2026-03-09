@@ -10,76 +10,82 @@ status: draft
 
 ### 1.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          React UI                                │
-│  ┌──────────────┐  ┌─────────────────┐  ┌──────────────────┐  │
-│  │  Home.tsx    │  │ AgentActivity   │  │  HospitalDetail  │  │
-│  │              │  │ Feed.tsx        │  │  .tsx            │  │
-│  └──────┬───────┘  └────────┬────────┘  └────────┬─────────┘  │
-│         │                   │                     │             │
-│         └───────────────────┴─────────────────────┘             │
-│                             │                                    │
-│                    ┌────────▼────────┐                          │
-│                    │  AppSync Client │                          │
-│                    │  (appsync.ts)   │                          │
-│                    └────────┬────────┘                          │
-└─────────────────────────────┼───────────────────────────────────┘
-                              │
-                    ┌─────────▼──────────┐
-                    │   AWS AppSync API  │
-                    │   (GraphQL)        │
-                    └─────────┬──────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-    ┌─────────▼────────┐     │     ┌────────▼─────────┐
-    │  initiateSearch  │     │     │ publishAgentChunk│
-    │   (Mutation)     │     │     │   (Mutation)     │
-    └─────────┬────────┘     │     └────────▲─────────┘
-              │               │              │
-    ┌─────────▼────────┐     │              │
-    │ InvokerLambda    │     │              │
-    │                  │     │              │
-    └─────────┬────────┘     │              │
-              │               │              │
-              │ async invoke  │              │
-              │               │              │
-    ┌─────────▼────────┐     │              │
-    │ WorkerLambda     │─────┘──────────────┘
-    │ (refactored      │     publishes chunks
-    │  searchFunction) │
-    └─────────┬────────┘
-              │
-              │ stores results
-              │
-    ┌─────────▼────────┐
-    │   DynamoDB       │
-    │ SearchResults    │
-    └──────────────────┘
+```mermaid
+graph TB
+    subgraph ReactUI["React UI"]
+        Home["Home.tsx"]
+        AgentFeed["AgentActivity<br/>Feed.tsx"]
+        HospitalDetail["HospitalDetail<br/>.tsx"]
+        
+        Home --> AppSyncClient
+        AgentFeed --> AppSyncClient
+        HospitalDetail --> AppSyncClient
+        
+        AppSyncClient["AppSync Client<br/>(appsync.ts)"]
+    end
+    
+    AppSyncClient --> AppSyncAPI["AWS AppSync API<br/>(GraphQL)"]
+    
+    AppSyncAPI --> InitiateSearch["initiateSearch<br/>(Mutation)"]
+    AppSyncAPI --> GetResults["getSearchResults<br/>(Query)"]
+    AppSyncAPI --> PublishChunk["publishAgentChunk<br/>(Mutation)"]
+    
+    InitiateSearch --> InvokerLambda["InvokerLambda"]
+    InvokerLambda -->|async invoke| WorkerLambda["WorkerLambda<br/>(refactored searchFunction)"]
+    WorkerLambda -->|publishes chunks| PublishChunk
+    WorkerLambda -->|stores results| DynamoDB["DynamoDB<br/>SearchResults"]
+    GetResults --> DynamoDB
+    
+    style ReactUI fill:#e3f2fd,stroke:#1976d2,color:#000
+    style AppSyncAPI fill:#fff3e0,stroke:#f57c00,color:#000
+    style InvokerLambda fill:#f3e5f5,stroke:#7b1fa2,color:#000
+    style WorkerLambda fill:#f3e5f5,stroke:#7b1fa2,color:#000
+    style DynamoDB fill:#e8f5e9,stroke:#388e3c,color:#000
 ```
 
 ### 1.2 Data Flow
 
-**Search Initiation Flow:**
-1. User submits search query in UI
-2. UI calls AppSync mutation `initiateSearch(query, customerId, userLocation)`
-3. AppSync triggers InvokerLambda
-4. InvokerLambda generates searchId, saves to DynamoDB, invokes WorkerLambda async
-5. InvokerLambda returns searchId immediately to UI
-6. UI subscribes to `onAgentActivity(searchId)`
-
-**Streaming Flow:**
-7. WorkerLambda invokes Bedrock Agent with enableTrace=True
-8. WorkerLambda processes agent event stream:
-   - Extracts trace events
-   - Simplifies to human-readable text
-   - Buffers 4 events
-   - Publishes buffer to AppSync via `publishAgentChunk(searchId, chunk)`
-9. UI receives chunks via subscription and displays in AgentActivityFeed
-10. When complete, WorkerLambda stores final results in DynamoDB
-11. WorkerLambda publishes "Completed" chunk
-12. UI fetches final results from DynamoDB and displays hospitals
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as React UI
+    participant AppSync as AWS AppSync
+    participant Invoker as InvokerLambda
+    participant Worker as WorkerLambda
+    participant Bedrock as Bedrock Agent
+    participant DDB as DynamoDB
+    
+    Note over User,DDB: Search Initiation Flow
+    User->>UI: Submit search query
+    UI->>AppSync: initiateSearch mutation<br/>(query, customerId, location)
+    AppSync->>Invoker: Trigger Lambda
+    Invoker->>DDB: Save initial status<br/>(searchId, status=processing)
+    Invoker->>Worker: Async invoke
+    Invoker-->>AppSync: Return searchId
+    AppSync-->>UI: searchId, status
+    UI->>AppSync: Subscribe to<br/>onAgentActivity(searchId)
+    
+    Note over Worker,DDB: Streaming Flow
+    Worker->>Bedrock: Invoke agent<br/>(enableTrace=true)
+    
+    loop Agent Processing
+        Bedrock-->>Worker: Stream trace events
+        Worker->>Worker: Extract & simplify<br/>trace events
+        Worker->>Worker: Buffer 4 events
+        Worker->>AppSync: publishAgentChunk<br/>(searchId, chunk)
+        AppSync-->>UI: Subscription update
+        UI->>UI: Display in<br/>AgentActivityFeed
+    end
+    
+    Bedrock-->>Worker: Final response
+    Worker->>DDB: Store final results<br/>(status=complete)
+    Worker->>AppSync: publishAgentChunk<br/>("Completed")
+    AppSync-->>UI: Completion notification
+    UI->>AppSync: getSearchResults query
+    AppSync->>DDB: Fetch results
+    DDB-->>AppSync: Hospital data
+    AppSync-->>UI: Display hospitals
+```
 
 ## 2. Component Design
 
