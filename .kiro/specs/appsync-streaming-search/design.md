@@ -1,9 +1,3 @@
----
-feature: appsync-streaming-search
-created: 2024-03-08
-status: draft
----
-
 # AppSync Streaming Search - Design Document
 
 ## 1. Architecture Overview
