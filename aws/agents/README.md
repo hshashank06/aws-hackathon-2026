@@ -4,32 +4,20 @@
 
 ### Agent Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  1️⃣ Orchestrator Agent                      │
-│  - Main entry point for user queries                        │
-│  - Breaks queries into sub-queries                          │
-│  - Coordinates DB Tool + OpenSearch agents                  │
-│  - Merges results                                           │
-│  - Outputs structured JSON                                  │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-        ┌────────┴────────┐
-        │                 │
-        ▼                 ▼
-┌──────────────┐  ┌──────────────────┐
-│ 2️⃣ DB Tool   │  │ 3️⃣ OpenSearch    │
-│    Agent     │  │    Knowledge     │
-│              │  │    Agent         │
-│ - DynamoDB   │  │ - Semantic       │
-│   tools      │  │   search         │
-│ - Determin-  │  │ - Contextual     │
-│   istic      │  │   info           │
-│   lookups    │  │ - Medical        │
-│ - Structured │  │   insights       │
-│   factual    │  │ - Reviews        │
-│   data       │  │ - Explanations   │
-└──────────────┘  └──────────────────┘
+```mermaid
+graph TB
+    Orchestrator["1️⃣ Orchestrator Agent<br/>━━━━━━━━━━━━━━━━━━━━<br/>Main entry point for user queries<br/>Breaks queries into sub-queries<br/>Coordinates DB Tool + OpenSearch agents<br/>Merges results<br/>Outputs structured JSON"]
+    
+    DBTool["2️⃣ DB Tool Agent<br/>━━━━━━━━━━━━━━<br/>DynamoDB tools<br/>Deterministic lookups<br/>Structured factual data"]
+    
+    OpenSearch["3️⃣ OpenSearch Knowledge Agent<br/>━━━━━━━━━━━━━━━━━━━━━━━━<br/>Semantic search<br/>Contextual info<br/>Medical insights<br/>Reviews<br/>Explanations"]
+    
+    Orchestrator --> DBTool
+    Orchestrator --> OpenSearch
+    
+    style Orchestrator fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000
+    style DBTool fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    style OpenSearch fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
 ```
 
 ---

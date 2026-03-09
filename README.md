@@ -320,123 +320,96 @@ graph TB
 
 #### 1. Hospital Search Flow
 
-```
-┌──────────┐
-│   User   │
-│  Query   │
-└────┬─────┘
-     │
-     ▼
-┌─────────────────┐
-│    AppSync      │
-│  (GraphQL API)  │
-└────┬────────────┘
-     │
-     ▼
-┌──────────────────────┐
-│ searchInvokerFunction│  (Returns searchId immediately)
-└────┬─────────────────┘
-     │ (Async invoke)
-     ▼
-┌──────────────────────┐
-│ searchWorkerFunction │
-└────┬─────────────────┘
-     │
-     ▼
-┌──────────────────────┐
-│  Bedrock Agent       │
-│  (Orchestrator)      │
-└────┬─────────────────┘
-     │
-     ├─────────────────────────────────┐
-     │                                 │
-     ▼                                 ▼
-┌────────────────────┐    ┌──────────────────────┐
-│ healthSearchTool   │    │ OpenSearch Knowledge │
-│ Function           │    │ Base                 │
-│                    │    │                      │
-│ ↓                  │    │ ↓                    │
-│ DynamoDB Tables    │    │ Vector Search        │
-│ (Hospital/Doctor)  │    │ (Review Embeddings)  │
-└────────┬───────────┘    └──────────┬───────────┘
-         │                           │
-         └───────────┬───────────────┘
-                     │
-                     ▼
-         ┌───────────────────────┐
-         │ AI-Generated Response │
-         └───────────┬───────────┘
-                     │
-                     ▼
-         ┌───────────────────────┐
-         │ AppSync Subscription  │
-         │ (Real-time Stream)    │
-         └───────────┬───────────┘
-                     │
-                     ▼
-         ┌───────────────────────┐
-         │    Frontend UI        │
-         │ (Display Results)     │
-         └───────────────────────┘
+```mermaid
+graph TB
+    User["User<br/>Query"]
+    AppSync["AppSync<br/>(GraphQL API)"]
+    Invoker["searchInvokerFunction<br/>(Returns searchId immediately)"]
+    Worker["searchWorkerFunction"]
+    BedrockAgent["Bedrock Agent<br/>(Orchestrator)"]
+    
+    HealthSearch["healthSearchTool<br/>Function"]
+    DynamoDB["DynamoDB Tables<br/>(Hospital/Doctor)"]
+    
+    KnowledgeBase["OpenSearch Knowledge<br/>Base"]
+    VectorSearch["Vector Search<br/>(Review Embeddings)"]
+    
+    AIResponse["AI-Generated Response"]
+    Subscription["AppSync Subscription<br/>(Real-time Stream)"]
+    Frontend["Frontend UI<br/>(Display Results)"]
+    
+    User --> AppSync
+    AppSync --> Invoker
+    Invoker -.->|Async invoke| Worker
+    Worker --> BedrockAgent
+    
+    BedrockAgent --> HealthSearch
+    BedrockAgent --> KnowledgeBase
+    
+    HealthSearch --> DynamoDB
+    KnowledgeBase --> VectorSearch
+    
+    DynamoDB --> AIResponse
+    VectorSearch --> AIResponse
+    
+    AIResponse --> Subscription
+    Subscription --> Frontend
+    
+    style User fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style AppSync fill:#ff9900,stroke:#333,stroke-width:2px,color:#000
+    style Invoker fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style Worker fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style BedrockAgent fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style HealthSearch fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style DynamoDB fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style KnowledgeBase fill:#c8e6c9,stroke:#333,stroke-width:2px,color:#000
+    style VectorSearch fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style AIResponse fill:#c8e6c9,stroke:#333,stroke-width:2px,color:#000
+    style Subscription fill:#ff9900,stroke:#333,stroke-width:2px,color:#000
+    style Frontend fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
 ```
 
 #### 2. Review Submission Flow
 
-```
-┌──────────────┐
-│ User Upload  │
-│ (Documents)  │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│      S3      │
-│   Bucket     │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────────┐
-│ reviewFunction   │
-└──────┬───────────┘
-       │
-       ├─────────────────────┐
-       │                     │
-       ▼                     ▼
-┌──────────────┐    ┌────────────────┐
-│   Textract   │    │  Comprehend    │
-│    (OCR)     │    │   Medical      │
-└──────┬───────┘    └────────┬───────┘
-       │                     │
-       └──────────┬──────────┘
-                  │
-                  ▼
-       ┌──────────────────┐
-       │  Extract Data    │
-       └──────┬───────────┘
-              │
-              ▼
-       ┌──────────────────┐
-       │    DynamoDB      │
-       │  (Review table)  │
-       └──────┬───────────┘
-              │
-              ▼
-       ┌──────────────────┐
-       │ ingestionFunction│
-       └──────┬───────────┘
-              │
-              ▼
-       ┌──────────────────┐
-       │     Bedrock      │
-       │ (Generate        │
-       │  Embedding)      │
-       └──────┬───────────┘
-              │
-              ▼
-       ┌──────────────────┐
-       │   OpenSearch     │
-       │ (Index Vector)   │
-       └──────────────────┘
+```mermaid
+graph TB
+    User["User Upload<br/>(Documents)"]
+    S3["S3<br/>Bucket"]
+    ReviewFunc["reviewFunction"]
+    
+    Textract["Textract<br/>(OCR)"]
+    Comprehend["Comprehend<br/>Medical"]
+    
+    ExtractData["Extract Data"]
+    DynamoDB["DynamoDB<br/>(Review table)"]
+    IngestionFunc["ingestionFunction"]
+    Bedrock["Bedrock<br/>(Generate<br/>Embedding)"]
+    OpenSearch["OpenSearch<br/>(Index Vector)"]
+    
+    User --> S3
+    S3 --> ReviewFunc
+    
+    ReviewFunc --> Textract
+    ReviewFunc --> Comprehend
+    
+    Textract --> ExtractData
+    Comprehend --> ExtractData
+    
+    ExtractData --> DynamoDB
+    DynamoDB --> IngestionFunc
+    IngestionFunc --> Bedrock
+    Bedrock --> OpenSearch
+    
+    style User fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style S3 fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style ReviewFunc fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Textract fill:#ce93d8,stroke:#333,stroke-width:2px,color:#000
+    style Comprehend fill:#ce93d8,stroke:#333,stroke-width:2px,color:#000
+    style ExtractData fill:#c8e6c9,stroke:#333,stroke-width:2px,color:#000
+    style DynamoDB fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style IngestionFunc fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style Bedrock fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style OpenSearch fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
 ```
 
 
