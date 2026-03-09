@@ -16,57 +16,45 @@ The reviewFunction serves three primary purposes:
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         reviewFunction Lambda                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                           │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐  │
-│  │  API Gateway     │    │  Step Functions  │    │  Async Indexing  │  │
-│  │  HTTP Routes     │    │  Document Flow   │    │  Self-Invocation │  │
-│  └──────────────────┘    └──────────────────┘    └──────────────────┘  │
-│           │                       │                       │              │
-│           ▼                       ▼                       ▼              │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                      Lambda Handler Router                        │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│           │                                                              │
-│           ├─────────────────────────────────────────────────────────┐   │
-│           │                                                          │   │
-│           ▼                                                          ▼   │
-│  ┌──────────────────┐                                    ┌──────────────┐
-│  │  Review CRUD     │                                    │  Document    │
-│  │  Operations      │                                    │  Processing  │
-│  └──────────────────┘                                    └──────────────┘
-│           │                                                      │        │
-│           ▼                                                      ▼        │
-│  ┌──────────────────┐                                    ┌──────────────┐
-│  │  DynamoDB        │                                    │  Extractors  │
-│  │  - Review        │                                    │  - Bill      │
-│  │  - Doctor        │                                    │  - Claim     │
-│  │  - Hospital      │                                    │  - Medical   │
-│  └──────────────────┘                                    └──────────────┘
-│                                                                  │        │
-└──────────────────────────────────────────────────────────────────────────┘
-                                                                   │
-                    ┌──────────────────────────────────────────────┤
-                    │                                              │
-                    ▼                                              ▼
-         ┌──────────────────┐                          ┌──────────────────┐
-         │  AWS Textract    │                          │  Bedrock Models  │
-         │  OCR Extraction  │                          │  - Nova Lite     │
-         └──────────────────┘                          │  - Nova Pro      │
-                    │                                  │  - Titan Embed   │
-                    ▼                                  └──────────────────┘
-         ┌──────────────────┐                                    │
-         │  Comprehend      │                                    │
-         │  Medical         │                                    │
-         └──────────────────┘                                    │
-                                                                  ▼
-                                                       ┌──────────────────┐
-                                                       │  OpenSearch      │
-                                                       │  Semantic Index  │
-                                                       └──────────────────┘
+```mermaid
+graph TB
+    subgraph Lambda["reviewFunction Lambda"]
+        APIGateway["API Gateway<br/>HTTP Routes"]
+        StepFunctions["Step Functions<br/>Document Flow"]
+        AsyncIndexing["Async Indexing<br/>Self-Invocation"]
+        
+        Router["Lambda Handler Router"]
+        
+        ReviewCRUD["Review CRUD<br/>Operations"]
+        DocProcessing["Document<br/>Processing"]
+        
+        DynamoDB["DynamoDB<br/>- Review<br/>- Doctor<br/>- Hospital"]
+        Extractors["Extractors<br/>- Bill<br/>- Claim<br/>- Medical"]
+        
+        APIGateway --> Router
+        StepFunctions --> Router
+        AsyncIndexing --> Router
+        
+        Router --> ReviewCRUD
+        Router --> DocProcessing
+        
+        ReviewCRUD --> DynamoDB
+        DocProcessing --> Extractors
+    end
+    
+    Textract["AWS Textract<br/>OCR Extraction"]
+    Comprehend["Comprehend<br/>Medical"]
+    Bedrock["Bedrock Models<br/>- Nova Lite<br/>- Nova Pro<br/>- Titan Embed"]
+    OpenSearch["OpenSearch<br/>Semantic Index"]
+    
+    Extractors --> Textract
+    Extractors --> Bedrock
+    Textract --> Comprehend
+    Bedrock --> OpenSearch
+    
+    style Lambda fill:#e1f5ff,stroke:#333,stroke-width:2px
+    style Router fill:#fff4e6,stroke:#333,stroke-width:2px
+    style Extractors fill:#f0f0f0,stroke:#333,stroke-width:2px
 ```
 
 

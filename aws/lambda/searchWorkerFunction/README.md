@@ -6,14 +6,19 @@ This Lambda function processes hospital search requests with real-time streaming
 
 ## Architecture
 
-```
-InvokerLambda → WorkerLambda (async)
-                    ↓
-              Bedrock Agent (with trace)
-                    ↓
-              AppSync (streaming)
-                    ↓
-              DynamoDB (final results)
+```mermaid
+graph LR
+    A[InvokerLambda] -->|async invoke| B[WorkerLambda]
+    B -->|invoke with trace| C[Bedrock Agent]
+    C -->|agent activity| D[AppSync]
+    D -->|real-time stream| E[Frontend UI]
+    B -->|save results| F[DynamoDB]
+    
+    style A fill:#ff9900
+    style B fill:#ff9900
+    style C fill:#9146ff
+    style D fill:#ff6b6b
+    style F fill:#4a90e2
 ```
 
 ## Features
