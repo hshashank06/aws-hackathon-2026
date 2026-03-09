@@ -37,63 +37,284 @@ Our platform solves these problems through:
 
 ## 🏗️ Architecture
 
-### High-Level System Architecture
+### Overview
 
+The platform uses two distinct architectural paths:
+1. **AppSync Path (GraphQL)**: AI-powered search with real-time streaming - bypasses API Gateway
+2. **API Gateway Path (REST)**: Traditional CRUD operations for hospitals, doctors, and reviews
+
+![AWS Architecture](resources/aws-architecture.jpg)
+
+---
+
+### 1. AI Search Flow (AppSync - Real-time Streaming)
+
+This diagram shows how AI-powered search works with real-time streaming, completely bypassing API Gateway.
+
+```mermaid
+graph TB
+    User["User<br/>Search Query"]
+    Frontend["React Frontend<br/>Search Interface"]
+    AppSync["AWS AppSync GraphQL<br/>Mutation: initiateSearch<br/>Subscription: onAgentActivity<br/>Query: getSearchResults"]
+    SearchInvoker["searchInvokerFunction<br/>1\. Generate searchId<br/>2\. Return immediately<br/>3\. Async invoke worker"]
+    SearchWorker["searchWorkerFunction<br/>1\. Invoke Bedrock Agent<br/>2\. Stream chunks to AppSync<br/>3\. Store final results"]
+
+    subgraph BedrockAgents["AWS Bedrock Multi-Agent System"]
+        Orchestrator["Orchestrator Agent<br/>Claude 3 Sonnet"]
+        DBTool["DB Tool Agent<br/>Database Queries"]
+        KB["Knowledge Base Agent<br/>Claude 3 Haiku"]
+    end
+
+    HealthSearch["healthSearchToolFunction<br/>11 Functions"]
+    DynamoDB["Amazon DynamoDB<br/>8 Tables"]
+    OpenSearch["Amazon OpenSearch<br/>Vector Search"]
+
+    User ---> |"1\. Enter Query"| Frontend
+    Frontend --->|"2\. GraphQL Mutation"| AppSync
+    AppSync -->|"3\. Lambda Resolver"| SearchInvoker
+    SearchInvoker -->|"4\. Return searchId"| AppSync
+    AppSync -->|"5\. Return searchId"| Frontend
+    Frontend -->|"6\. Subscribe"| AppSync
+
+    SearchInvoker -.->|"7\. Async invoke"| SearchWorker
+    SearchWorker -->|"8\. Invoke agent"| Orchestrator
+
+    Orchestrator -->|"9a. Query DB"| DBTool
+    Orchestrator -->|"9b. Search reviews"| KB
+
+    DBTool --> HealthSearch
+    HealthSearch --> DynamoDB
+    KB --> OpenSearch
+
+    SearchWorker -->|"10\. Publish chunks"| AppSync
+    AppSync -->|"11\. Stream WebSocket"| Frontend
+
+    SearchWorker -->|"12\. Store results"| DynamoDB
+
+    style User fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style Frontend fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style AppSync fill:#ff9900,stroke:#333,stroke-width:3px,color:#000
+    style BedrockAgents fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style Orchestrator fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style DBTool fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style KB fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style SearchInvoker fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style SearchWorker fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style HealthSearch fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style DynamoDB fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style OpenSearch fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
 ```
-                    ┌─────────────────────────────────────────┐
-                    │      Frontend (React + Vite)            │
-                    │  ┌──────────┐  ┌──────────┐  ┌───────┐ │
-                    │  │ Search   │  │ Hospital │  │Review │ │
-                    │  │ + Stream │  │ Details  │  │ Form  │ │
-                    │  └────┬─────┘  └────┬─────┘  └───┬───┘ │
-                    └───────┼─────────────┼────────────┼─────┘
-                            │             │            │
-                            └─────────────┼────────────┘
-                                          │
-                            ┌─────────────▼─────────────┐
-                            │    AWS AppSync (GraphQL)  │
-                            │  • Mutations              │
-                            │  • Queries                │
-                            │  • Subscriptions          │
-                            └─────────────┬─────────────┘
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-          ┌─────────▼─────────┐          │          ┌──────────▼──────────┐
-          │   API Gateway     │          │          │  AppSync Resolvers  │
-          │   (REST API)      │          │          │  (Lambda)           │
-          └─────────┬─────────┘          │          └──────────┬──────────┘
-                    │                     │                     │
-          ┌─────────▼─────────────────────▼─────────────────────▼─────────┐
-          │                     Lambda Functions                           │
-          │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-          │  │   CRUD   │  │  Search  │  │  Review  │  │  Ingestion   │  │
-          │  │ (8 funcs)│  │(3 funcs) │  │(1 func)  │  │  (1 func)    │  │
-          │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │
-          └───────┼─────────────┼─────────────┼────────────────┼──────────┘
-                  │             │             │                │
-       ┌──────────▼──────┐     │      ┌──────▼──────┐  ┌──────▼──────────┐
-       │   DynamoDB      │     │      │     S3      │  │   OpenSearch    │
-       │  (8 tables)     │     │      │ (Documents) │  │ (Vector Store)  │
-       └─────────────────┘     │      └─────────────┘  └─────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  AWS Bedrock Agent  │
-                    │  ┌───────────────┐  │
-                    │  │ Orchestrator  │  │
-                    │  └───────┬───────┘  │
-                    │          │          │
-                    │  ┌───────▼───────┐  │
-                    │  │   DB Tool     │  │
-                    │  │ (Action Grp)  │  │
-                    │  └───────┬───────┘  │
-                    │          │          │
-                    │  ┌───────▼───────┐  │
-                    │  │  Knowledge    │  │
-                    │  │     Base      │  │
-                    │  └───────────────┘  │
-                    └─────────────────────┘
+
+**Key Points:**
+- AppSync handles GraphQL mutations, queries, and WebSocket subscriptions
+- Search is asynchronous: immediate searchId return, then real-time streaming
+- Bedrock Agent uses multi-agent collaboration (Orchestrator + DB Tool + Knowledge Base)
+- NO API Gateway involved - direct AppSync to Lambda integration
+
+---
+
+### 2. REST API Flow (API Gateway - CRUD Operations)
+
+This diagram shows traditional REST operations for managing hospitals, doctors, reviews, and documents.
+
+```mermaid
+graph TB
+    User["User<br/>CRUD Operations"]
+    Frontend["React Frontend<br/>Hospital Details<br/>Review Submission<br/>Document Upload"]
+    APIGateway["API Gateway REST<br/>GET /hospitals<br/>GET /doctors<br/>POST /reviews<br/>GET /customers"]
+
+    subgraph CRUDLambdas["CRUD Lambda Functions"]
+        Customer["customerFunction"]
+        Hospital["hospitalFunction"]
+        Doctor["doctorFunction"]
+        Department["departmentFunction"]
+        InsuranceCo["insuranceCompanyFunction"]
+        Policy["insurancePolicyFunction"]
+    end
+
+    Review["reviewFunction<br/>Review CRUD"]
+    DynamoDB["Amazon DynamoDB<br/>8 Tables"]
+    S3["Amazon S3<br/>Document Storage"]
+
+    User -->|"REST API calls"| Frontend
+    Frontend -->|"HTTP requests"| APIGateway
+
+    APIGateway --> Customer
+    APIGateway --> Hospital
+    APIGateway --> Doctor
+    APIGateway --> Department
+    APIGateway --> InsuranceCo
+    APIGateway --> Policy
+    APIGateway --> Review
+
+    Customer --> DynamoDB
+    Hospital --> DynamoDB
+    Doctor --> DynamoDB
+    Department --> DynamoDB
+    InsuranceCo --> DynamoDB
+    Policy --> DynamoDB
+    Review --> DynamoDB
+    Review --> S3
+
+    style User fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style Frontend fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style APIGateway fill:#ff9900,stroke:#333,stroke-width:3px,color:#000
+    style CRUDLambdas fill:#f8bbd0,stroke:#333,stroke-width:2px
+    style Customer fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Hospital fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Doctor fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Department fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style InsuranceCo fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Policy fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style Review fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style DynamoDB fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style S3 fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
 ```
+
+**Key Points:**
+- Traditional REST API through API Gateway
+- 8 Lambda functions for CRUD operations
+- Direct DynamoDB access for all tables
+- S3 for document storage with presigned URLs
+
+---
+
+### 3. Document Processing Pipeline
+
+This diagram shows how medical documents are processed using AI/ML services.
+
+```mermaid
+graph TB
+    User["User<br/>Upload Document"]
+    ReviewFunc["reviewFunction<br/>POST /reviews/presign<br/>POST /reviews/process-document"]
+    S3["Amazon S3<br/>Document Storage"]
+    StepFunctions["Step Functions<br/>Sync Express Workflow<br/>1\. Extract text via Textract<br/>2\. Classify document via Bedrock<br/>3\. Extract structured data"]
+    Textract["AWS Textract<br/>OCR Extraction"]
+    Bedrock["Bedrock Nova Pro<br/>Classification"]
+
+    subgraph Extractors["Specialized Extractors"]
+        BillExtract["Bill Extractor"]
+        ClaimExtract["Claim Extractor"]
+        MedicalExtract["Medical Extractor"]
+    end
+
+    Comprehend["Comprehend Medical<br/>Entity Detection"]
+    Result["Structured Data<br/>Returned to Frontend"]
+
+    User -->|"1\. Request presigned URL"| ReviewFunc
+    ReviewFunc -->|"2\. Generate presigned URL"| S3
+    User -->|"3\. Upload directly"| S3
+    User -->|"4\. Trigger processing"| ReviewFunc
+    ReviewFunc -->|"5\. Start workflow"| StepFunctions
+
+    StepFunctions -->|"6\. Extract text"| Textract
+    Textract -->|"7\. Raw text + tables"| Bedrock
+
+    Bedrock -->|"8a. Hospital bill"| BillExtract
+    Bedrock -->|"8b. Insurance claim"| ClaimExtract
+    Bedrock -->|"8c. Medical record"| MedicalExtract
+
+    MedicalExtract -->|"9\. Detect entities"| Comprehend
+
+    BillExtract --> Result
+    ClaimExtract --> Result
+    MedicalExtract --> Result
+    Comprehend --> Result
+
+    Result -->|"10\. Return to user"| User
+
+    style User fill:#d0e8f2,stroke:#333,stroke-width:2px,color:#000
+    style ReviewFunc fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style S3 fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style StepFunctions fill:#e1bee7,stroke:#333,stroke-width:2px,color:#000
+    style Textract fill:#ce93d8,stroke:#333,stroke-width:2px,color:#000
+    style Bedrock fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style Extractors fill:#ffe0b2,stroke:#333,stroke-width:2px
+    style BillExtract fill:#ffcc80,stroke:#333,stroke-width:2px,color:#000
+    style ClaimExtract fill:#ffcc80,stroke:#333,stroke-width:2px,color:#000
+    style MedicalExtract fill:#ffcc80,stroke:#333,stroke-width:2px,color:#000
+    style Comprehend fill:#ce93d8,stroke:#333,stroke-width:2px,color:#000
+    style Result fill:#c8e6c9,stroke:#333,stroke-width:2px,color:#000
+```
+
+**Key Points:**
+- Browser-to-S3 direct upload using presigned URLs
+- Step Functions orchestrates the processing pipeline
+- Textract extracts raw text and tables
+- Bedrock classifies document type and extracts structured data
+- Comprehend Medical adds medical entity recognition
+- Synchronous workflow returns results immediately
+
+---
+
+### 4. Review Indexing Flow
+
+This diagram shows how reviews are indexed into OpenSearch for semantic search.
+
+```mermaid
+graph TB
+    ReviewFunc["reviewFunction<br/>POST /reviews<br/>Create Review"]
+    DynamoDB["Amazon DynamoDB<br/>Review Table<br/>Doctor Table<br/>Hospital Table"]
+    IngestionFunc["ingestionFunction<br/>1\. Fetch review + metadata<br/>2\. Build combined text<br/>3\. Generate embedding<br/>4\. Index to OpenSearch"]
+    BedrockEmbed["Bedrock Titan Embed v2<br/>1024 dimensions"]
+    OpenSearch["Amazon OpenSearch<br/>Vector Index"]
+
+    ReviewFunc -->|"1\. Save review"| DynamoDB
+    ReviewFunc -.->|"2\. Async invoke - fire-and-forget"| IngestionFunc
+
+    IngestionFunc -->|"3\. Fetch review data"| DynamoDB
+    IngestionFunc -->|"4\. Generate embedding"| BedrockEmbed
+    BedrockEmbed -->|"5\. Return vector"| IngestionFunc
+    IngestionFunc -->|"6\. Index document"| OpenSearch
+
+    style ReviewFunc fill:#f48fb1,stroke:#333,stroke-width:2px,color:#000
+    style DynamoDB fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+    style IngestionFunc fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style BedrockEmbed fill:#a5d6a7,stroke:#333,stroke-width:2px,color:#000
+    style OpenSearch fill:#bbdefb,stroke:#333,stroke-width:2px,color:#000
+```
+
+**Key Points:**
+- Asynchronous indexing (fire-and-forget pattern)
+- Combines review text with doctor and hospital metadata
+- Titan Embed v2 generates 1024-dimensional vectors
+- OpenSearch enables semantic search over reviews
+- Non-blocking: review creation returns immediately
+
+---
+
+### 5. Data Layer Architecture
+
+This diagram shows the complete data storage architecture.
+
+```mermaid
+graph TB
+    subgraph DynamoDBTables["Amazon DynamoDB eu-north-1"]
+        Customer["Customer<br/>PK: customerId<br/>Patient info<br/>Visit history"]
+        Hospital["Hospital<br/>PK: hospitalId<br/>Name, location<br/>Services<br/>Insurance accepted"]
+        Doctor["Doctor<br/>PK: doctorId<br/>Name, specialization<br/>Hospital affiliation<br/>Ratings"]
+        Department["Department<br/>PK: departmentId<br/>Name<br/>Hospital<br/>Services"]
+        InsuranceCo["InsuranceCompany<br/>PK: companyId<br/>Name<br/>Coverage details"]
+        Policy["InsurancePolicy<br/>PK: policyId<br/>Company<br/>Coverage %<br/>Hospitals"]
+        Review["Review<br/>PK: reviewId<br/>GSI: customerId<br/>GSI: hospitalId<br/>Ratings<br/>Costs<br/>Documents"]
+        SearchResults["SearchResults<br/>PK: searchId<br/>TTL: 5 hours<br/>Cached results<br/>Agent response"]
+    end
+
+    S3Bucket["Amazon S3<br/>Bucket: choco-warriors-db-synthetic-data-us<br/>documents/hospitalBills/<br/>documents/insuranceClaims/<br/>documents/medicalRecords/"]
+
+    OpenSearchDomain["Amazon OpenSearch<br/>Domain: health-review-vector-domain<br/>Instance: 2x t3.small.search<br/>Storage: 20GB EBS per node<br/>Index: health-review-index<br/>Vector dimensions: 1024<br/>Algorithm: HNSW<br/>Distance: Cosine similarity"]
+
+    style DynamoDBTables fill:#e6f3ff,stroke:#333,stroke-width:2px
+    style S3Bucket fill:#ffe0b2,stroke:#333,stroke-width:2px,color:#000
+    style OpenSearchDomain fill:#c8e6c9,stroke:#333,stroke-width:2px,color:#000
+```
+
+**Key Points:**
+- 8 DynamoDB tables with on-demand capacity
+- GSI indexes for fast queries (CustomerIndex, HospitalIdIndex)
+- S3 for document storage with organized folder structure
+- OpenSearch with vector search capabilities (HNSW algorithm)
+- TTL on SearchResults table for automatic cleanup
 
 ### Data Flow
 
@@ -1353,8 +1574,8 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: March 8, 2026  
-**Version**: 1.0.0  
+**Last Updated**: March 8, 2026
+**Version**: 1.0.0
 **Status**: Production Ready
 
 **Built with ❤️ using AWS Services**

@@ -29,22 +29,27 @@ This function implements the **async invocation pattern** for long-running AI op
 
 ## Data Flow
 
-```
-1. User submits search query in UI
-   ↓
-2. AppSync receives initiateSearch mutation
-   ↓
-3. InvokerLambda generates searchId
-   ↓
-4. Save "processing" status to DynamoDB
-   ↓
-5. Invoke searchWorkerFunction async (Event type)
-   ↓
-6. Return searchId immediately to UI (<500ms)
-   ↓
-7. UI subscribes to onAgentActivity(searchId)
-   ↓
-8. WorkerLambda processes in background
+```mermaid
+sequenceDiagram
+    participant UI as User/Frontend
+    participant AppSync as AWS AppSync
+    participant Invoker as InvokerLambda
+    participant DDB as DynamoDB
+    participant Worker as WorkerLambda
+    
+    UI->>AppSync: initiateSearch mutation
+    AppSync->>Invoker: Invoke with query
+    Invoker->>Invoker: Generate searchId
+    Invoker->>DDB: Save "processing" status
+    Invoker->>Worker: Async invoke (Event)
+    Invoker-->>AppSync: Return searchId (<500ms)
+    AppSync-->>UI: searchId + status
+    UI->>AppSync: Subscribe onAgentActivity(searchId)
+    
+    Note over Worker: Processing in background
+    Worker->>AppSync: Publish agent chunks
+    AppSync->>UI: Stream real-time updates
+    Worker->>DDB: Save final results
 ```
 
 ## AppSync Integration
